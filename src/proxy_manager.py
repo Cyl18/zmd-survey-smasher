@@ -27,6 +27,9 @@ def set_system_proxy(port: int = 8080) -> None:
     )
     winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, 1)
     winreg.SetValueEx(key, "ProxyServer", 0, winreg.REG_SZ, f"127.0.0.1:{port}")
+    # Bypass the proxy for loopback so the injected WS connection reaches the
+    # WS server directly instead of being routed back through mitmproxy.
+    winreg.SetValueEx(key, "ProxyOverride", 0, winreg.REG_SZ, "127.0.0.1;localhost;<local>")
     winreg.CloseKey(key)
     logger.info("System proxy set to 127.0.0.1:%d", port)
 
