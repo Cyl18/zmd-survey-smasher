@@ -1,0 +1,19 @@
+[project]
+name = "zmd-survey-smasher"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mitmproxy>=12.2.1",
+    "pyqt6>=6.10.2",
+    "websockets>=16.0",
+]
+
+[project.scripts]
+zmd-survey-smasher = "main:main"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
+]
