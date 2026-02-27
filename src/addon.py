@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 
 from mitmproxy import http
 
@@ -98,9 +99,22 @@ class SurveyAddon:
         if "text/html" not in content_type:
             return
 
+        # Strip CSP headers so injected script can use fetch / eval freely.
+        # QtWebEngine may enforce CSP connect-src which blocks our fetch calls.
+        flow.response.headers.pop("content-security-policy", None)
+        flow.response.headers.pop("content-security-policy-report-only", None)
+
         body = flow.response.get_content()
         if body is None:
             return
+
+        # Remove CSP <meta> tags from HTML as well
+        body = re.sub(
+            rb'<meta[^>]+http-equiv\s*=\s*["\']?content-security-policy["\']?[^>]*>',
+            b'',
+            body,
+            flags=re.IGNORECASE,
+        )
 
         # Inject a small <script src> tag before </body>
         needle = b"</body>"
@@ -111,4 +125,5 @@ class SurveyAddon:
             body = body + _SCRIPT_TAG
 
         flow.response.set_content(body)
+        self._log(f"[addon] injected script into {flow.request.pretty_url}")
         logger.debug("[addon] injected script tag into %s", flow.request.pretty_url)

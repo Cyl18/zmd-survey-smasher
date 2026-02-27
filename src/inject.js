@@ -61,34 +61,20 @@
     return new Promise(function (r) { return setTimeout(r, ms); });
   }
 
-  // ─── HTTP fetch transport ─────────────────────────────────────────────────
+  // ─── Logging (best-effort via mitmproxy interception) ────────────────────
 
-  const _QUERY_URL = 'https://survey.hypergryph.com/__zmd_query__';
-  const _LOG_URL   = 'https://survey.hypergryph.com/__zmd_log__';
-
-  async function sendQuery(payload) {
-    console.log('[zmd] sendQuery:', payload && payload.page_type);
-    try {
-      var resp = await fetch(_QUERY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      var msg = await resp.json();
-      console.log('[zmd] sendQuery: recv', msg && msg.type);
-      return msg;
-    } catch (e) {
-      console.error('[zmd] sendQuery fetch error', e);
-      return null;
-    }
-  }
+  const _LOG_URL = 'https://survey.hypergryph.com/__zmd_log__';
 
   function wsSendLog(message) {
-    fetch(_LOG_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'log', message: message }),
-    }).catch(function () {});
+    try {
+      fetch(_LOG_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'log', message: message }),
+      }).catch(function () {});
+    } catch (e) {
+      // fetch itself may throw in restricted QtWebEngine environments
+    }
   }
 
   // ─── DOM structure logging ──────────────────────────────────────────────
@@ -216,17 +202,38 @@
     return null;
   }
 
-  function buildGroups(pageType) {
-    if (pageType === 'agreement') return [];
-    if (pageType === 'option_groups') {
-      return getOptionGroups().map(function (els, i) {
-        return {
-          index: i,
-          option_texts: els.map(function (e) { return e.textContent.trim(); }),
-        };
-      });
+  // ─── Inline answer actions (no server round-trip needed) ─────────────────
+
+  function clickAgreement() {
+    console.log('[zmd] action: agreement');
+    var input = document.querySelector('input[type="checkbox"]');
+    if (input) {
+      var label = input.closest('label');
+      try {
+        if (label) { label.click(); }
+        else if (!input.checked) { input.click(); }
+      } catch (e) { console.warn('[zmd] agreement click failed', e); }
+      try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
     }
-    return [];
+    setTimeout(function () {
+      var btn = findAdvanceButton();
+      if (btn) btn.click();
+    }, 100);
+  }
+
+  function clickOptionGroups() {
+    var groups = getOptionGroups();
+    console.log('[zmd] action: option_groups, found', groups.length, 'groups');
+    groups.forEach(function (els) {
+      var idx = els.length - 2;
+      if (idx < 0) idx = 0;
+      console.log('[zmd] clicking [' + idx + '] of ' + els.length + ':', els[idx].textContent.trim().slice(0, 30));
+      els[idx].click();
+    });
+    setTimeout(function () {
+      var btn = findAdvanceButton();
+      if (btn) btn.click();
+    }, 100);
   }
 
   // ─── Fallback: 您尚未答完此题 ──────────────────────────────────────────────
@@ -241,7 +248,6 @@
       console.warn('[zmd] fallback attempt ' + (attempt + 1) + '/' + retries);
       wsSendLog('[zmd] fallback attempt ' + (attempt + 1) + '/' + retries);
 
-      // For every detected option group, randomly pick 1–3 options and click them.
       var groups = getOptionGroups();
       if (groups.length > 0) {
         groups.forEach(function (els) {
@@ -253,7 +259,6 @@
           });
         });
       } else {
-        // No text-based groups found — try every non-nav button at random.
         var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
           return !SKIP_BUTTON_TEXTS.includes(b.textContent.trim());
         });
@@ -265,7 +270,6 @@
           });
       }
 
-      // Give the DOM time to register the clicks before advancing.
       await sleep(200);
 
       // In fallback, ONLY click 下一页 — NEVER 提交.
@@ -279,7 +283,6 @@
       await sleep(500);
       if (!hasUnansweredError()) return;
     }
-    // Reset lastKey so the page can be retried on next DOM mutation.
     lastKey = '';
     wsSendLog('fallback exhausted after ' + retries + ' retries');
     console.error('[zmd] fallback exhausted');
@@ -292,8 +295,6 @@
   var processing = false;
 
   function pageKey() {
-    // Include innerText length so SPA navigations that keep the same URL
-    // and body.children.length but change visible content are detected.
     return location.href + '|' + document.body.children.length + '|' + (document.body.innerText || '').length;
   }
 
@@ -305,7 +306,6 @@
 
     processing = true;
     try {
-      // Dump DOM structure for debugging
       logDomStructure();
 
       var pageType = detectPageType();
@@ -317,37 +317,20 @@
       console.log('[zmd] detected page type:', pageType);
       wsSendLog('[zmd] detected page type: ' + pageType);
 
-      var payload = {
-        type: 'query',
-        page_type: pageType,
-        groups: buildGroups(pageType),
-        outer_html: document.body.outerHTML
-      };
-
-      var resp = await sendQuery(payload);
-      if (!resp || !resp.code) {
-        console.error('[zmd] empty response from server');
-        return;
+      // Execute action directly — no server round-trip.
+      if (pageType === 'agreement') {
+        clickAgreement();
+      } else if (pageType === 'option_groups') {
+        clickOptionGroups();
       }
 
-      try {
-        console.log('[zmd] evaling code (len=' + (resp.code && resp.code.length) + ')');
-        // Show first 200 chars for quick debugging
-        console.log('[zmd] code preview:', (resp.code || '').slice(0, 200));
-        eval(resp.code);
-      } catch (e) { console.error('[zmd] eval error', e); }
-
-      // Watch for unanswered error within 200 ms
       await sleep(200);
       if (hasUnansweredError()) {
         await handleFallback();
       }
     } finally {
       processing = false;
-      // Re-check after a short delay: mutations that fired while we were
-      // processing (e.g. SPA navigation triggered by the advance button)
-      // were ignored because processing was true.  This ensures the new
-      // page gets picked up even if no further DOM mutations occur.
+      // Re-check: mutations during processing were ignored (processing=true).
       setTimeout(function () { processPage(); }, 300);
     }
   }
