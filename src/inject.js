@@ -275,11 +275,17 @@
     return null;
   }
 
+  function detectCheckboxOptions() {
+    // Any page with ≥1 checkbox that wasn't caught by detectAgreement()
+    return document.querySelectorAll('input[type="checkbox"]').length >= 1;
+  }
+
   function detectPageType() {
     if (detectAgreement()) return 'agreement';
     if (getButtonGroups().length > 0) return 'button_groups';
     if (getDivOptionsContainer()) return 'div_options';
     if (getDivGridContainer()) return 'div_grid';
+    if (detectCheckboxOptions()) return 'checkbox_options';
     return null;
   }
 
@@ -307,6 +313,16 @@
       if (!gc) return [];
       var kids = Array.from(gc.children);
       return [{ index: 0, option_texts: kids.map(function (k) { return k.textContent.trim(); }) }];
+    }
+    if (pageType === 'checkbox_options') {
+      var cbs = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+      return [{
+        index: 0,
+        option_texts: cbs.map(function (cb) {
+          var label = cb.closest('label');
+          return label ? label.textContent.trim() : '';
+        })
+      }];
     }
     return [];
   }

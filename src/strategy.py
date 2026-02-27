@@ -47,6 +47,8 @@ class AnswerStrategy:
             code = self._div_options_js()
         elif page_type == "div_grid":
             code = self._div_grid_js()
+        elif page_type == "checkbox_options":
+            code = self._checkbox_options_js()
         else:
             code = "console.warn('zmd-survey-smasher: unknown page_type', " + repr(page_type) + ");"
 
@@ -145,6 +147,33 @@ class AnswerStrategy:
             "    console.log('[zmd] div_grid: clicking child[' + idx + '] of ' + children.length);"
             "    children[idx].click();"
             "  } else { console.warn('[zmd] div_grid: container not found'); }"
+            "  setTimeout(function(){"
+            f"    {advance}"
+            "  }, 100);"
+            "})();"
+        )
+
+    # ------------------------------------------------------------------
+    # JS generator: checkbox_options
+    # Handles pages where each answer option is a checkbox inside a label.
+    # Clicks the label of the second-to-last checkbox, then advances.
+    # ------------------------------------------------------------------
+
+    def _checkbox_options_js(self) -> str:
+        advance = self._click_advance_js()
+        return (
+            "(function(){"
+            "  console.log('[zmd] exec: checkbox_options');"
+            "  var cbs = Array.from(document.querySelectorAll('input[type=\"checkbox\"]'));"
+            "  console.log('[zmd] checkbox_options: found', cbs.length, 'checkboxes');"
+            "  if(cbs.length > 0){"
+            "    var idx = Math.max(0, cbs.length - 2);"
+            "    var cb = cbs[idx];"
+            "    var label = cb.closest('label');"
+            "    if(label){ label.click(); console.log('[zmd] checkbox_options: clicked label[' + idx + ']'); }"
+            "    else{ cb.click(); console.log('[zmd] checkbox_options: clicked checkbox[' + idx + ']'); }"
+            "    try{ cb.dispatchEvent(new Event('change', { bubbles: true })); }catch(e){}"
+            "  }"
             "  setTimeout(function(){"
             f"    {advance}"
             "  }, 100);"
