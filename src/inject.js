@@ -44,17 +44,18 @@
       });
       document.body.appendChild(badge);
     }
-    // Log panel — use <div> (not <pre>) to avoid game CSS targeting pre.
-    // Use px instead of vh for max-height (some embedded webviews break on vh).
+    // Log panel — positioned at TOP (below badge) because game UI covers
+    // the bottom.  Uses <div> (not <pre>) to dodge game CSS resets.
+    // px units only (no vh — broken in some embedded webviews).
     if (!_logEl || !document.body.contains(_logEl)) {
       _logEl = document.createElement('div');
       _logEl.id = 'zmd-log';
       _logEl.style.cssText = _imp(
-        'position:fixed;bottom:0;left:0;width:100%;max-height:200px;min-height:48px;'
+        'position:fixed;top:40px;right:8px;width:55%;max-height:200px;min-height:32px;'
         + 'overflow-y:auto;overflow-x:hidden;margin:0;padding:6px 8px;'
-        + 'box-sizing:border-box;'
-        + 'font-size:12px;font-family:monospace;line-height:1.4;'
-        + 'background:rgba(0,0,0,.85);color:#0f0;z-index:2147483647;'
+        + 'box-sizing:border-box;border-radius:6px;'
+        + 'font-size:11px;font-family:monospace;line-height:1.3;'
+        + 'background:rgba(0,0,0,.82);color:#0f0;z-index:2147483646;'
         + 'pointer-events:auto;user-select:text;'
         + 'white-space:pre-wrap;word-break:break-all;'
         + 'display:' + (_logVisible ? 'block' : 'none') + ';visibility:visible;opacity:1;'
