@@ -75,11 +75,10 @@ class AnswerStrategy:
 
     # ------------------------------------------------------------------
     # JS generator: option_groups
-    # Unified handler for all question types that present selectable options
-    # as either <button> or <div> elements with non-empty text content.
-    # Groups elements by their direct parent, keeps only "leaf" groups
-    # (elements that are not themselves parents of another group), then
-    # clicks the second-to-last element in each group.
+    # Two-phase detection matching inject.js:
+    #   Phase 1 — button groups (group by parent, ≥2 per group)
+    #   Phase 2 — div option containers (3–10 child divs each with ≥2 children)
+    # Clicks the second-to-last element in each group.
     # ------------------------------------------------------------------
 
     def _option_groups_js(self) -> str:
@@ -88,34 +87,33 @@ class AnswerStrategy:
             "(function(){"
             "  console.log('[zmd] exec: option_groups');"
             "  var SKIP = ['下一页','提交','上一页'];"
-            "  var candidates = Array.from(document.querySelectorAll('button, div')).filter(function(el){"
-            "    var text = el.textContent.trim();"
-            "    if(!text) return false;"
-            "    if(SKIP.includes(text)) return false;"
-            "    return true;"
+            # Phase 1: button groups
+            "  var allBtns = Array.from(document.querySelectorAll('button')).filter(function(b){"
+            "    var t = b.textContent.trim(); return t && !SKIP.includes(t);"
             "  });"
-            "  var map = new Map();"
-            "  candidates.forEach(function(el){"
-            "    var p = el.parentElement;"
+            "  var btnMap = new Map();"
+            "  allBtns.forEach(function(b){"
+            "    var p = b.parentElement;"
             "    if(!p) return;"
-            "    if(!map.has(p)) map.set(p, []);"
-            "    map.get(p).push(el);"
+            "    if(!btnMap.has(p)) btnMap.set(p, []);"
+            "    btnMap.get(p).push(b);"
             "  });"
             "  var groups = [];"
-            "  map.forEach(function(els, parent){"
-            "    if(els.length < 2) return;"
-            "    var tag = els[0].tagName;"
-            "    if(!els.every(function(e){ return e.tagName === tag; })) return;"
-            "    groups.push({ parent: parent, els: els });"
-            "  });"
-            "  var allGroupParents = new Set(groups.map(function(g){ return g.parent; }));"
-            "  groups = groups.filter(function(g){"
-            "    return !g.els.some(function(e){ return allGroupParents.has(e); });"
-            "  });"
+            "  btnMap.forEach(function(btns){ if(btns.length >= 2) groups.push(btns); });"
+            # Phase 2: div option containers (only if no button groups)
+            "  if(groups.length === 0){"
+            "    var allDivs = Array.from(document.querySelectorAll('div'));"
+            "    for(var i = 0; i < allDivs.length; i++){"
+            "      var el = allDivs[i];"
+            "      var kids = Array.from(el.children);"
+            "      if(kids.length < 3 || kids.length > 10) continue;"
+            "      var ok = kids.every(function(k){ return k.tagName === 'DIV' && k.children.length >= 2; });"
+            "      if(ok) groups.push(kids);"
+            "    }"
+            "  }"
             "  console.log('[zmd] option_groups: found', groups.length, 'groups');"
             "  var clickedCount = 0;"
-            "  groups.forEach(function(g){"
-            "    var els = g.els;"
+            "  groups.forEach(function(els){"
             "    var idx = els.length - 2;"
             "    if(idx < 0) idx = 0;"
             "    console.log('[zmd] option_groups: clicking [' + idx + '] of ' + els.length + ', text:', els[idx].textContent.trim().slice(0,30));"

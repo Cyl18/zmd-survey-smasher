@@ -120,12 +120,20 @@
       lines.push('Checkbox: checked=' + cb.checked + ' path=' + parentPath(cb, 4));
     }
 
-    // Unified option groups
-    var optGroups = getOptionGroups();
-    lines.push('Option groups (' + optGroups.length + '):');
-    optGroups.forEach(function (els, i) {
-      lines.push('  Group[' + i + '] (' + els.length + ' ' + els[0].tagName + ') texts=['
-        + els.map(function (e) { return JSON.stringify(e.textContent.trim().slice(0, 20)); }).join(', ') + ']');
+    // Button groups
+    var btnGroups = getButtonGroups();
+    lines.push('Button groups (' + btnGroups.length + '):');
+    btnGroups.forEach(function (btns, i) {
+      lines.push('  BtnGroup[' + i + '] (' + btns.length + ' btns) texts=['
+        + btns.map(function (b) { return JSON.stringify(b.textContent.trim().slice(0, 20)); }).join(', ') + ']');
+    });
+
+    // Div option containers
+    var divGroups = getDivOptionContainers();
+    lines.push('Div option containers (' + divGroups.length + '):');
+    divGroups.forEach(function (kids, i) {
+      lines.push('  DivGroup[' + i + '] (' + kids.length + ' children) texts=['
+        + kids.map(function (k) { return JSON.stringify(k.textContent.trim().slice(0, 20)); }).join(', ') + ']');
     });
 
     var dump = lines.join('\n');
@@ -150,45 +158,56 @@
     return false;
   }
 
-  // ─── Unified option-group detection ─────────────────────────────────────
-  // An "option" is any <button> or <div> with non-empty text that is not a
-  // navigation control.  Elements are grouped by their direct parent; groups
-  // where every sibling shares the same tag and there are ≥2 siblings qualify.
-  // To avoid matching outer wrapper divs, we keep only "leaf" groups — groups
-  // whose member elements are not themselves parents of another qualifying group.
+  // ─── Option-group detection ──────────────────────────────────────────────
+  // Two-phase detection:
+  //   Phase 1 — button groups: group <button> elements by parentElement,
+  //             keep groups with ≥2 buttons (leaf filter works because
+  //             buttons never nest inside other buttons).
+  //   Phase 2 — div option containers (only if no button groups found):
+  //             find a container div whose direct children are all divs
+  //             with a consistent sub-structure (≥2 child divs each).
+  //             This matches the icon+text pattern and rating grids.
 
-  function getOptionGroups() {
-    var candidates = Array.from(document.querySelectorAll('button, div')).filter(function (el) {
-      var text = el.textContent.trim();
-      if (!text) return false;
-      if (SKIP_BUTTON_TEXTS.includes(text)) return false;
-      return true;
+  function getButtonGroups() {
+    var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
+      var text = b.textContent.trim();
+      return text && !SKIP_BUTTON_TEXTS.includes(text);
     });
-
     var map = new Map();
-    candidates.forEach(function (el) {
-      var p = el.parentElement;
+    allBtns.forEach(function (b) {
+      var p = b.parentElement;
       if (!p) return;
       if (!map.has(p)) map.set(p, []);
-      map.get(p).push(el);
+      map.get(p).push(b);
     });
-
     var groups = [];
-    map.forEach(function (els, parent) {
-      if (els.length < 2) return;
-      var tag = els[0].tagName;
-      if (!els.every(function (e) { return e.tagName === tag; })) return;
-      groups.push({ parent: parent, els: els });
+    map.forEach(function (btns) {
+      if (btns.length >= 2) groups.push(btns);
     });
+    return groups;
+  }
 
-    // Keep only leaf groups: discard any group whose member elements are
-    // themselves the parent of another group.
-    var allGroupParents = new Set(groups.map(function (g) { return g.parent; }));
-    groups = groups.filter(function (g) {
-      return !g.els.some(function (e) { return allGroupParents.has(e); });
-    });
+  function getDivOptionContainers() {
+    // A container is a div with 3–10 direct child divs, where each child
+    // has ≥2 child divs itself (icon+text, or similar repeated structure).
+    var allDivs = Array.from(document.querySelectorAll('div'));
+    var containers = [];
+    for (var i = 0; i < allDivs.length; i++) {
+      var el = allDivs[i];
+      var kids = Array.from(el.children);
+      if (kids.length < 3 || kids.length > 10) continue;
+      var allDivKids = kids.every(function (k) {
+        return k.tagName === 'DIV' && k.children.length >= 2;
+      });
+      if (allDivKids) containers.push(kids);
+    }
+    return containers;
+  }
 
-    return groups.map(function (g) { return g.els; });
+  function getOptionGroups() {
+    var btnGroups = getButtonGroups();
+    if (btnGroups.length > 0) return btnGroups;
+    return getDivOptionContainers();
   }
 
   function detectPageType() {
@@ -325,6 +344,11 @@
       }
     } finally {
       processing = false;
+      // Re-check after a short delay: mutations that fired while we were
+      // processing (e.g. SPA navigation triggered by the advance button)
+      // were ignored because processing was true.  This ensures the new
+      // page gets picked up even if no further DOM mutations occur.
+      setTimeout(function () { processPage(); }, 300);
     }
   }
 
