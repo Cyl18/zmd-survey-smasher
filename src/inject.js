@@ -8,47 +8,53 @@
   const SKIP_BUTTON_TEXTS = ['下一页', '提交', '上一页'];
   var dialogDismissed = false;
 
-  // ─── Injected badge ───────────────────────────────────────────────────────
+  // ─── On-page log panel ──────────────────────────────────────────────────
+
+  var _logEl = null;
+  function ensureLogPanel() {
+    if (_logEl && document.body.contains(_logEl)) return;
+    _logEl = document.createElement('pre');
+    _logEl.id = 'zmd-log';
+    _logEl.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;max-height:40vh;'
+      + 'overflow-y:auto;margin:0;padding:6px 8px;font:11px/1.4 monospace;'
+      + 'background:rgba(0,0,0,.82);color:#0f0;z-index:2147483647;'
+      + 'pointer-events:auto;user-select:text;white-space:pre-wrap;word-break:break-all;';
+    document.body.appendChild(_logEl);
+  }
+
+  function L(msg) {
+    console.log('[zmd]', msg);
+    try {
+      if (!document.body) return;
+      ensureLogPanel();
+      _logEl.textContent += msg + '\n';
+      _logEl.scrollTop = _logEl.scrollHeight;
+    } catch(e) {}
+  }
+
+  // ─── Badge ──────────────────────────────────────────────────────────────
 
   function ensureBadge() {
     if (document.getElementById('zmd-badge')) return;
     if (!document.body) return;
-    var badge = document.createElement('div');
-    badge.id = 'zmd-badge';
-    badge.textContent = '✅ 已被注入' + (DEBUG_NO_SUBMIT ? ' · ⚠️ 调试模式（不提交）' : '');
-    badge.style.cssText = [
-      'position:fixed',
-      'top:12px',
-      'right:12px',
-      'z-index:2147483647',
-      'padding:10px 20px',
-      'border-radius:8px',
-      'font-size:16px',
-      'font-weight:bold',
-      'font-family:system-ui,sans-serif',
-      'color:#fff',
-      'background:' + (DEBUG_NO_SUBMIT ? '#d97706' : '#16a34a'),
-      'box-shadow:0 4px 12px rgba(0,0,0,.45)',
-      'pointer-events:none',
-      'user-select:none',
-    ].join(';');
-    document.body.appendChild(badge);
+    var b = document.createElement('div');
+    b.id = 'zmd-badge';
+    b.textContent = '✅ 已注入' + (DEBUG_NO_SUBMIT ? ' ⚠调试' : '');
+    b.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483647;'
+      + 'padding:6px 14px;border-radius:6px;font:bold 14px system-ui,sans-serif;'
+      + 'color:#fff;background:' + (DEBUG_NO_SUBMIT ? '#d97706' : '#16a34a')
+      + ';box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;';
+    document.body.appendChild(b);
   }
 
-  // Insert badge as soon as body is available
-  if (document.body) {
-    ensureBadge();
-  } else {
-    document.addEventListener('DOMContentLoaded', ensureBadge);
-  }
-
-  // Re-insert badge if SPA re-renders wipe it
+  if (document.body) ensureBadge();
+  else document.addEventListener('DOMContentLoaded', ensureBadge);
   var badgeGuard = new MutationObserver(ensureBadge);
-  var _startBadgeGuard = function () {
+  function _startBadgeGuard() {
     if (document.body) badgeGuard.observe(document.body, { childList: true, subtree: false });
-  };
-  if (document.body) { _startBadgeGuard(); }
-  else { document.addEventListener('DOMContentLoaded', _startBadgeGuard); }
+  }
+  if (document.body) _startBadgeGuard();
+  else document.addEventListener('DOMContentLoaded', _startBadgeGuard);
 
   // ─── Utilities ────────────────────────────────────────────────────────────
 
@@ -59,72 +65,6 @@
 
   function sleep(ms) {
     return new Promise(function (r) { return setTimeout(r, ms); });
-  }
-
-  // ─── Logging (best-effort via mitmproxy interception) ────────────────────
-
-  const _LOG_URL = 'https://survey.hypergryph.com/__zmd_log__';
-
-  function wsSendLog(message) {
-    try {
-      fetch(_LOG_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'log', message: message }),
-      }).catch(function () {});
-    } catch (e) {
-      // fetch itself may throw in restricted QtWebEngine environments
-    }
-  }
-
-  // ─── DOM structure logging ──────────────────────────────────────────────
-
-  function parentPath(el, depth) {
-    depth = depth || 3;
-    var parts = [];
-    var cur = el;
-    for (var i = 0; i < depth && cur; i++) {
-      parts.unshift(cur.tagName + (cur.className ? '.' + String(cur.className).split(' ')[0] : ''));
-      cur = cur.parentElement;
-    }
-    return parts.join(' > ');
-  }
-
-  function logDomStructure() {
-    var lines = ['=== [zmd] DOM structure dump ==='];
-
-    // All buttons
-    var allBtns = Array.from(document.querySelectorAll('button'));
-    lines.push('Buttons (' + allBtns.length + '):');
-    allBtns.forEach(function (b, i) {
-      lines.push('  btn[' + i + '] text=' + JSON.stringify(b.textContent.trim().slice(0, 40)) + ' path=' + parentPath(b, 4));
-    });
-
-    // Checkbox
-    var cb = document.querySelector('input[type="checkbox"]');
-    if (cb) {
-      lines.push('Checkbox: checked=' + cb.checked + ' path=' + parentPath(cb, 4));
-    }
-
-    // Button groups
-    var btnGroups = getButtonGroups();
-    lines.push('Button groups (' + btnGroups.length + '):');
-    btnGroups.forEach(function (btns, i) {
-      lines.push('  BtnGroup[' + i + '] (' + btns.length + ' btns) texts=['
-        + btns.map(function (b) { return JSON.stringify(b.textContent.trim().slice(0, 20)); }).join(', ') + ']');
-    });
-
-    // Div option containers
-    var divGroups = getDivOptionContainers();
-    lines.push('Div option containers (' + divGroups.length + '):');
-    divGroups.forEach(function (kids, i) {
-      lines.push('  DivGroup[' + i + '] (' + kids.length + ' children) texts=['
-        + kids.map(function (k) { return JSON.stringify(k.textContent.trim().slice(0, 20)); }).join(', ') + ']');
-    });
-
-    var dump = lines.join('\n');
-    console.log(dump);
-    wsSendLog(dump);
   }
 
   function detectAgreement() {
@@ -205,87 +145,63 @@
   // ─── Inline answer actions (no server round-trip needed) ─────────────────
 
   function clickAgreement() {
-    console.log('[zmd] action: agreement');
+    L('action: agreement');
     var input = document.querySelector('input[type="checkbox"]');
     if (input) {
       var label = input.closest('label');
       try {
-        if (label) { label.click(); }
-        else if (!input.checked) { input.click(); }
-      } catch (e) { console.warn('[zmd] agreement click failed', e); }
+        if (label) label.click();
+        else if (!input.checked) input.click();
+      } catch (e) { L('agreement click failed: ' + e); }
       try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
     }
-    setTimeout(function () {
-      var btn = findAdvanceButton();
-      if (btn) btn.click();
-    }, 100);
+    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
   }
 
   function clickOptionGroups() {
     var groups = getOptionGroups();
-    console.log('[zmd] action: option_groups, found', groups.length, 'groups');
+    L('action: option_groups, ' + groups.length + ' groups');
     groups.forEach(function (els) {
-      var idx = els.length - 2;
-      if (idx < 0) idx = 0;
-      console.log('[zmd] clicking [' + idx + '] of ' + els.length + ':', els[idx].textContent.trim().slice(0, 30));
+      var idx = Math.max(0, els.length - 2);
+      L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
       els[idx].click();
     });
-    setTimeout(function () {
-      var btn = findAdvanceButton();
-      if (btn) btn.click();
-    }, 100);
+    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
   }
 
-  // ─── Fallback: 您尚未答完此题 ──────────────────────────────────────────────
+  // ─── Fallback ─────────────────────────────────────────────────────────────
 
   function hasUnansweredError() {
     return document.body.textContent.includes('您尚未答完此题');
   }
 
   async function handleFallback(retries) {
-    retries = retries === undefined ? 10 : retries;
+    retries = retries || 10;
     for (var attempt = 0; attempt < retries; attempt++) {
-      console.warn('[zmd] fallback attempt ' + (attempt + 1) + '/' + retries);
-      wsSendLog('[zmd] fallback attempt ' + (attempt + 1) + '/' + retries);
-
+      L('fallback ' + (attempt + 1) + '/' + retries);
       var groups = getOptionGroups();
       if (groups.length > 0) {
         groups.forEach(function (els) {
-          var count = 1 + Math.floor(Math.random() * Math.min(3, els.length));
-          var shuffled = els.slice().sort(function () { return Math.random() - 0.5; });
-          shuffled.slice(0, count).forEach(function (e) {
-            console.log('[zmd] fallback: clicking:', e.textContent.trim().slice(0, 30));
-            e.click();
-          });
+          var n = 1 + Math.floor(Math.random() * Math.min(3, els.length));
+          els.slice().sort(function () { return Math.random() - 0.5; }).slice(0, n)
+            .forEach(function (e) { e.click(); });
         });
       } else {
-        var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
+        var btns = Array.from(document.querySelectorAll('button')).filter(function (b) {
           return !SKIP_BUTTON_TEXTS.includes(b.textContent.trim());
         });
-        var count = Math.min(3, allBtns.length);
-        allBtns.slice().sort(function () { return Math.random() - 0.5; }).slice(0, count)
-          .forEach(function (b) {
-            console.log('[zmd] fallback: clicking button:', b.textContent.trim());
-            b.click();
-          });
+        btns.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 3)
+          .forEach(function (b) { b.click(); });
       }
-
       await sleep(200);
-
-      // In fallback, ONLY click 下一页 — NEVER 提交.
-      var advBtn = Array.from(document.querySelectorAll('button'))
+      var adv = Array.from(document.querySelectorAll('button'))
         .find(function (b) { return b.textContent.trim() === '下一页'; });
-      if (advBtn) {
-        console.log('[zmd] fallback: clicking 下一页');
-        advBtn.click();
-      }
-
+      if (adv) adv.click();
       await sleep(500);
       if (!hasUnansweredError()) return;
     }
     lastKey = '';
-    wsSendLog('fallback exhausted after ' + retries + ' retries');
-    console.error('[zmd] fallback exhausted');
+    L('fallback exhausted');
   }
 
   // ─── Navigation guard ────────────────────────────────────────────────────
@@ -303,34 +219,26 @@
     var key = pageKey();
     if (key === lastKey) return;
     lastKey = key;
-
     processing = true;
     try {
-      logDomStructure();
+      // Log DOM summary
+      var btns = document.querySelectorAll('button').length;
+      var cbs = document.querySelectorAll('input[type="checkbox"]').length;
+      var bg = getButtonGroups().length;
+      var dg = getDivOptionContainers().length;
+      L('page: ' + btns + ' btns, ' + cbs + ' cb, ' + bg + ' btnGrp, ' + dg + ' divGrp');
 
       var pageType = detectPageType();
-      if (!pageType) {
-        console.log('[zmd] no recognisable page type');
-        wsSendLog('[zmd] no recognisable page type — check DOM dump above');
-        return;
-      }
-      console.log('[zmd] detected page type:', pageType);
-      wsSendLog('[zmd] detected page type: ' + pageType);
+      if (!pageType) { L('⚠ unknown page type'); return; }
+      L('→ ' + pageType);
 
-      // Execute action directly — no server round-trip.
-      if (pageType === 'agreement') {
-        clickAgreement();
-      } else if (pageType === 'option_groups') {
-        clickOptionGroups();
-      }
+      if (pageType === 'agreement') clickAgreement();
+      else if (pageType === 'option_groups') clickOptionGroups();
 
       await sleep(200);
-      if (hasUnansweredError()) {
-        await handleFallback();
-      }
+      if (hasUnansweredError()) await handleFallback();
     } finally {
       processing = false;
-      // Re-check: mutations during processing were ignored (processing=true).
       setTimeout(function () { processPage(); }, 300);
     }
   }
@@ -340,79 +248,35 @@
     debounceTimer = setTimeout(function () { processPage(); }, 10);
   }
 
-  // ─── Dialog dismissal: 您之前已经回答了部分题目 ────────────────────────────
+  // ─── Dialog dismissal ─────────────────────────────────────────────────────
 
   function dismissResumeDialog() {
-    if (dialogDismissed) return false;
-    if (!document.body) return false;
+    if (dialogDismissed || !document.body) return false;
     if (!document.body.textContent.includes('您之前已经回答了部分题目，是否继续上次回答')) return false;
-
-    // Search the whole document for any button/role=button whose text contains 取消
     var allBtns = Array.from(document.querySelectorAll('button, [role="button"], a'));
-    console.log('[zmd] resume-dialog: found buttons:', allBtns.map(function(b){ return JSON.stringify(b.textContent.trim()); }).join(', '));
-    wsSendLog('[zmd] resume-dialog: found ' + allBtns.length + ' buttons');
-    var cancelBtn = allBtns.find(function (b) {
-      var t = b.textContent.trim();
-      return t === '取消' || t.includes('取消');
-    });
-    if (cancelBtn) {
-      cancelBtn.click();
-      dialogDismissed = true;
-      lastKey = '';  // reset so next page gets processed
-      console.log('[zmd] dismissed resume-dialog (取消)');
-      wsSendLog('[zmd] dismissed resume-dialog (取消)');
-      return true;
-    }
-
-    // Fallback: no 取消 found — click 下一页 to proceed through the dialog
-    var nextBtn = allBtns.find(function (b) {
-      var t = b.textContent.trim();
-      return t === '下一页' || t.includes('下一页');
-    });
-    if (nextBtn) {
-      nextBtn.click();
-      dialogDismissed = true;
-      lastKey = '';  // reset so next page gets processed
-      console.log('[zmd] dismissed resume-dialog (下一页 fallback)');
-      wsSendLog('[zmd] dismissed resume-dialog (下一页 fallback)');
-      return true;
-    }
-
-    console.warn('[zmd] resume-dialog detected but no dismiss button found');
+    var cancel = allBtns.find(function (b) { return b.textContent.trim().includes('取消'); });
+    if (cancel) { cancel.click(); dialogDismissed = true; lastKey = ''; L('dismissed dialog (取消)'); return true; }
+    var next = allBtns.find(function (b) { return b.textContent.trim().includes('下一页'); });
+    if (next) { next.click(); dialogDismissed = true; lastKey = ''; L('dismissed dialog (下一页)'); return true; }
+    L('⚠ dialog detected but no button found');
     return false;
   }
 
   // ─── Bootstrap ────────────────────────────────────────────────────────────
 
   async function bootstrap() {
-    // Delay startup slightly to allow SPA rendering / CSS to stabilise.
-    console.log('[zmd] bootstrap: delaying 1s before processing');
+    L('bootstrap: waiting 1s...');
     await sleep(1000);
 
-    // Watch for resume-dialog appearance (only fires until dialog is dismissed)
-    var dialogObserver = new MutationObserver(function () {
-      if (!dialogDismissed) dismissResumeDialog();
-    });
-    dialogObserver.observe(document.body, { childList: true, subtree: true });
+    var dObs = new MutationObserver(function () { if (!dialogDismissed) dismissResumeDialog(); });
+    dObs.observe(document.body, { childList: true, subtree: true });
 
-    // Initial scan (dialog may already be present)
-    if (dismissResumeDialog()) {
-      // Dialog was dismissed — wait for SPA to load the new page content
-      console.log('[zmd] bootstrap: dialog dismissed, waiting 1s for page to load');
-      await sleep(1000);
-    }
+    if (dismissResumeDialog()) { L('dialog dismissed, waiting 1s...'); await sleep(1000); }
 
-    // Initial page processing
     processPage();
-
-    // Watch for SPA navigation
-    var observer = new MutationObserver(onMutation);
-    observer.observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(onMutation).observe(document.body, { childList: true, subtree: true });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootstrap);
-  } else {
-    bootstrap();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootstrap);
+  else bootstrap();
 })();
