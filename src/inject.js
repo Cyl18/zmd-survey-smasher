@@ -1,70 +1,71 @@
 // inject.js — injected by mitmproxy into survey.hypergryph.com HTML pages
 // {{DEBUG_NO_SUBMIT}} is substituted at intercept time.
+// NOTE: no async/await — some QtWebEngine builds break on it silently.
 (function () {
   'use strict';
 
-  const DEBUG_NO_SUBMIT = {{DEBUG_NO_SUBMIT}};
-  const ADVANCE_TEXTS = DEBUG_NO_SUBMIT ? ['下一页'] : ['下一页', '提交'];
-  const SKIP_BUTTON_TEXTS = ['下一页', '提交', '上一页'];
+  var DEBUG_NO_SUBMIT = {{DEBUG_NO_SUBMIT}};
+  var ADVANCE_TEXTS = DEBUG_NO_SUBMIT ? ['下一页'] : ['下一页', '提交'];
+  var SKIP_BUTTON_TEXTS = ['下一页', '提交', '上一页'];
   var dialogDismissed = false;
 
-  // ─── On-page log panel ──────────────────────────────────────────────────
+  // ─── On-page log panel (created synchronously, same as badge) ──────────
 
   var _logEl = null;
-  function ensureLogPanel() {
-    if (_logEl && document.body.contains(_logEl)) return;
-    _logEl = document.createElement('pre');
-    _logEl.id = 'zmd-log';
-    _logEl.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;max-height:40vh;'
-      + 'overflow-y:auto;margin:0;padding:6px 8px;font:11px/1.4 monospace;'
-      + 'background:rgba(0,0,0,.82);color:#0f0;z-index:2147483647;'
-      + 'pointer-events:auto;user-select:text;white-space:pre-wrap;word-break:break-all;';
-    document.body.appendChild(_logEl);
+
+  function _initUI() {
+    if (!document.body) return;
+    // Badge
+    if (!document.getElementById('zmd-badge')) {
+      var b = document.createElement('div');
+      b.id = 'zmd-badge';
+      b.textContent = '\u2705 \u5df2\u6ce8\u5165' + (DEBUG_NO_SUBMIT ? ' \u26a0\u8c03\u8bd5' : '');
+      b.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483647;'
+        + 'padding:6px 14px;border-radius:6px;font:bold 14px system-ui,sans-serif;'
+        + 'color:#fff;background:' + (DEBUG_NO_SUBMIT ? '#d97706' : '#16a34a')
+        + ';box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;';
+      document.body.appendChild(b);
+    }
+    // Log panel
+    if (!_logEl || !document.body.contains(_logEl)) {
+      _logEl = document.createElement('pre');
+      _logEl.id = 'zmd-log';
+      _logEl.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;max-height:35vh;'
+        + 'overflow-y:auto;margin:0;padding:6px 8px;font:12px/1.4 monospace;'
+        + 'background:rgba(0,0,0,.85);color:#0f0;z-index:2147483647;'
+        + 'pointer-events:auto;user-select:text;white-space:pre-wrap;word-break:break-all;';
+      document.body.appendChild(_logEl);
+    }
   }
 
   function L(msg) {
-    console.log('[zmd]', msg);
+    try { console.log('[zmd]', msg); } catch(e) {}
     try {
       if (!document.body) return;
-      ensureLogPanel();
+      _initUI();
       _logEl.textContent += msg + '\n';
-      _logEl.scrollTop = _logEl.scrollHeight;
+      _logEl.scrollTop = 1e9;
     } catch(e) {}
   }
 
-  // ─── Badge ──────────────────────────────────────────────────────────────
-
-  function ensureBadge() {
-    if (document.getElementById('zmd-badge')) return;
-    if (!document.body) return;
-    var b = document.createElement('div');
-    b.id = 'zmd-badge';
-    b.textContent = '✅ 已注入' + (DEBUG_NO_SUBMIT ? ' ⚠调试' : '');
-    b.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483647;'
-      + 'padding:6px 14px;border-radius:6px;font:bold 14px system-ui,sans-serif;'
-      + 'color:#fff;background:' + (DEBUG_NO_SUBMIT ? '#d97706' : '#16a34a')
-      + ';box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;';
-    document.body.appendChild(b);
+  // Create UI immediately (synchronous — no async dependency)
+  if (document.body) { _initUI(); }
+  else { document.addEventListener('DOMContentLoaded', _initUI); }
+  // Re-create if SPA wipes it
+  var _uiGuard = new MutationObserver(_initUI);
+  function _startGuard() {
+    if (document.body) _uiGuard.observe(document.body, { childList: true, subtree: false });
   }
+  if (document.body) _startGuard();
+  else document.addEventListener('DOMContentLoaded', _startGuard);
 
-  if (document.body) ensureBadge();
-  else document.addEventListener('DOMContentLoaded', ensureBadge);
-  var badgeGuard = new MutationObserver(ensureBadge);
-  function _startBadgeGuard() {
-    if (document.body) badgeGuard.observe(document.body, { childList: true, subtree: false });
-  }
-  if (document.body) _startBadgeGuard();
-  else document.addEventListener('DOMContentLoaded', _startBadgeGuard);
+  L('script loaded');
 
   // ─── Utilities ────────────────────────────────────────────────────────────
 
   function findAdvanceButton() {
     return Array.from(document.querySelectorAll('button'))
-      .find(function (b) { return ADVANCE_TEXTS.includes(b.textContent.trim()); });
-  }
-
-  function sleep(ms) {
-    return new Promise(function (r) { return setTimeout(r, ms); });
+      .find(function (b) { return ADVANCE_TEXTS.indexOf(b.textContent.trim()) !== -1; });
   }
 
   function detectAgreement() {
@@ -74,11 +75,11 @@
     if (!cb) return false;
     if (cb.checked) return false;  // already accepted → not agreement page
     var label = cb.closest('label');
-    if (label && label.textContent.includes('我已阅读，并同意以上内容')) return true;
+    if (label && label.textContent.indexOf('我已阅读，并同意以上内容') !== -1) return true;
     // Slightly broader: check the checkbox's parent chain (up to 3 levels)
     var el = cb.parentElement;
     for (var i = 0; i < 3 && el; i++) {
-      if (el.textContent && el.textContent.includes('我已阅读，并同意以上内容')) return true;
+      if (el.textContent && el.textContent.indexOf('我已阅读，并同意以上内容') !== -1) return true;
       el = el.parentElement;
     }
     return false;
@@ -97,7 +98,7 @@
   function getButtonGroups() {
     var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
       var text = b.textContent.trim();
-      return text && !SKIP_BUTTON_TEXTS.includes(text);
+      return text && SKIP_BUTTON_TEXTS.indexOf(text) === -1;
     });
     var map = new Map();
     allBtns.forEach(function (b) {
@@ -169,42 +170,43 @@
     setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
   }
 
-  // ─── Fallback ─────────────────────────────────────────────────────────────
+  // ─── Fallback (pure setTimeout, no async) ──────────────────────────────
 
   function hasUnansweredError() {
-    return document.body.textContent.includes('您尚未答完此题');
+    return document.body.textContent.indexOf('您尚未答完此题') !== -1;
   }
 
-  async function handleFallback(retries) {
-    retries = retries || 10;
-    for (var attempt = 0; attempt < retries; attempt++) {
-      L('fallback ' + (attempt + 1) + '/' + retries);
-      var groups = getOptionGroups();
-      if (groups.length > 0) {
-        groups.forEach(function (els) {
-          var n = 1 + Math.floor(Math.random() * Math.min(3, els.length));
-          els.slice().sort(function () { return Math.random() - 0.5; }).slice(0, n)
-            .forEach(function (e) { e.click(); });
-        });
-      } else {
-        var btns = Array.from(document.querySelectorAll('button')).filter(function (b) {
-          return !SKIP_BUTTON_TEXTS.includes(b.textContent.trim());
-        });
-        btns.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 3)
-          .forEach(function (b) { b.click(); });
-      }
-      await sleep(200);
+  function handleFallback(attempt, maxRetries, done) {
+    attempt = attempt || 0;
+    maxRetries = maxRetries || 10;
+    if (attempt >= maxRetries) { lastKey = ''; L('fallback exhausted'); done(); return; }
+    L('fallback ' + (attempt + 1) + '/' + maxRetries);
+    var groups = getOptionGroups();
+    if (groups.length > 0) {
+      groups.forEach(function (els) {
+        var n = 1 + Math.floor(Math.random() * Math.min(3, els.length));
+        els.slice().sort(function () { return Math.random() - 0.5; }).slice(0, n)
+          .forEach(function (e) { e.click(); });
+      });
+    } else {
+      var btns = Array.from(document.querySelectorAll('button')).filter(function (b) {
+        return SKIP_BUTTON_TEXTS.indexOf(b.textContent.trim()) === -1;
+      });
+      btns.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 3)
+        .forEach(function (b) { b.click(); });
+    }
+    setTimeout(function () {
       var adv = Array.from(document.querySelectorAll('button'))
         .find(function (b) { return b.textContent.trim() === '下一页'; });
       if (adv) adv.click();
-      await sleep(500);
-      if (!hasUnansweredError()) return;
-    }
-    lastKey = '';
-    L('fallback exhausted');
+      setTimeout(function () {
+        if (!hasUnansweredError()) { done(); return; }
+        handleFallback(attempt + 1, maxRetries, done);
+      }, 500);
+    }, 200);
   }
 
-  // ─── Navigation guard ────────────────────────────────────────────────────
+  // ─── Navigation guard (pure setTimeout, no async) ─────────────────────
 
   var lastKey = '';
   var debounceTimer = null;
@@ -214,33 +216,43 @@
     return location.href + '|' + document.body.children.length + '|' + (document.body.innerText || '').length;
   }
 
-  async function processPage() {
+  function processPage() {
     if (processing) return;
     var key = pageKey();
     if (key === lastKey) return;
     lastKey = key;
     processing = true;
+
     try {
-      // Log DOM summary
-      var btns = document.querySelectorAll('button').length;
-      var cbs = document.querySelectorAll('input[type="checkbox"]').length;
-      var bg = getButtonGroups().length;
-      var dg = getDivOptionContainers().length;
-      L('page: ' + btns + ' btns, ' + cbs + ' cb, ' + bg + ' btnGrp, ' + dg + ' divGrp');
+      var nBtn = document.querySelectorAll('button').length;
+      var nCb = document.querySelectorAll('input[type="checkbox"]').length;
+      var nBg = getButtonGroups().length;
+      var nDg = getDivOptionContainers().length;
+      L('page: ' + nBtn + ' btns, ' + nCb + ' cb, ' + nBg + ' btnGrp, ' + nDg + ' divGrp');
 
       var pageType = detectPageType();
-      if (!pageType) { L('⚠ unknown page type'); return; }
+      if (!pageType) { L('⚠ unknown page type'); processing = false; scheduleRecheck(); return; }
       L('→ ' + pageType);
 
       if (pageType === 'agreement') clickAgreement();
       else if (pageType === 'option_groups') clickOptionGroups();
-
-      await sleep(200);
-      if (hasUnansweredError()) await handleFallback();
-    } finally {
-      processing = false;
-      setTimeout(function () { processPage(); }, 300);
+    } catch (e) {
+      L('ERROR: ' + e);
     }
+
+    // Check for unanswered error after a short delay
+    setTimeout(function () {
+      if (hasUnansweredError()) {
+        handleFallback(0, 10, function () { processing = false; scheduleRecheck(); });
+      } else {
+        processing = false;
+        scheduleRecheck();
+      }
+    }, 300);
+  }
+
+  function scheduleRecheck() {
+    setTimeout(function () { processPage(); }, 300);
   }
 
   function onMutation() {
@@ -252,27 +264,34 @@
 
   function dismissResumeDialog() {
     if (dialogDismissed || !document.body) return false;
-    if (!document.body.textContent.includes('您之前已经回答了部分题目，是否继续上次回答')) return false;
+    if (document.body.textContent.indexOf('您之前已经回答了部分题目，是否继续上次回答') === -1) return false;
     var allBtns = Array.from(document.querySelectorAll('button, [role="button"], a'));
-    var cancel = allBtns.find(function (b) { return b.textContent.trim().includes('取消'); });
+    var cancel = allBtns.find(function (b) { return b.textContent.trim().indexOf('取消') !== -1; });
     if (cancel) { cancel.click(); dialogDismissed = true; lastKey = ''; L('dismissed dialog (取消)'); return true; }
-    var next = allBtns.find(function (b) { return b.textContent.trim().includes('下一页'); });
+    var next = allBtns.find(function (b) { return b.textContent.trim().indexOf('下一页') !== -1; });
     if (next) { next.click(); dialogDismissed = true; lastKey = ''; L('dismissed dialog (下一页)'); return true; }
     L('⚠ dialog detected but no button found');
     return false;
   }
 
-  // ─── Bootstrap ────────────────────────────────────────────────────────────
+  // ─── Bootstrap (pure setTimeout, no async) ────────────────────────────
 
-  async function bootstrap() {
+  function bootstrap() {
     L('bootstrap: waiting 1s...');
-    await sleep(1000);
+    setTimeout(function () {
+      var dObs = new MutationObserver(function () { if (!dialogDismissed) dismissResumeDialog(); });
+      dObs.observe(document.body, { childList: true, subtree: true });
 
-    var dObs = new MutationObserver(function () { if (!dialogDismissed) dismissResumeDialog(); });
-    dObs.observe(document.body, { childList: true, subtree: true });
+      if (dismissResumeDialog()) {
+        L('dialog dismissed, waiting 1s...');
+        setTimeout(function () { startProcessing(); }, 1000);
+      } else {
+        startProcessing();
+      }
+    }, 1000);
+  }
 
-    if (dismissResumeDialog()) { L('dialog dismissed, waiting 1s...'); await sleep(1000); }
-
+  function startProcessing() {
     processPage();
     new MutationObserver(onMutation).observe(document.body, { childList: true, subtree: true });
   }
