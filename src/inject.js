@@ -1,6 +1,7 @@
 // inject.js — injected by mitmproxy into survey.hypergryph.com HTML pages
 // {{DEBUG_NO_SUBMIT}} is substituted at intercept time.
 // NOTE: no async/await — some QtWebEngine builds break on it silently.
+// NOTE: Chrome/87 compat — no <pre>, no vh units, all styles !important.
 (function () {
   'use strict';
 
@@ -13,28 +14,53 @@
 
   var _logEl = null;
   var _logBuffer = [];   // survives DOM wipes; capped at 200 lines
+  var _logVisible = true;
+
+  // Build a style string with !important on every property so game CSS
+  // cannot override our overlay elements.
+  function _imp(css) {
+    return css.replace(/;/g, ' !important;');
+  }
 
   function _initUI() {
     if (!document.body) return;
-    // Badge
-    if (!document.getElementById('zmd-badge')) {
-      var b = document.createElement('div');
-      b.id = 'zmd-badge';
-      b.textContent = '\u2705 \u5df2\u6ce8\u5165' + (DEBUG_NO_SUBMIT ? ' \u26a0\u8c03\u8bd5' : '');
-      b.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483647;'
-        + 'padding:6px 14px;border-radius:6px;font:bold 14px system-ui,sans-serif;'
+    // Badge — clickable to toggle log panel
+    var badge = document.getElementById('zmd-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'zmd-badge';
+      badge.textContent = '\u2705 \u5df2\u6ce8\u5165' + (DEBUG_NO_SUBMIT ? ' \u26a0\u8c03\u8bd5' : '');
+      badge.style.cssText = _imp(
+        'position:fixed;top:8px;right:8px;z-index:2147483647;'
+        + 'padding:6px 14px;border-radius:6px;font-size:14px;font-weight:bold;'
+        + 'font-family:system-ui,sans-serif;line-height:1.4;'
         + 'color:#fff;background:' + (DEBUG_NO_SUBMIT ? '#d97706' : '#16a34a')
-        + ';box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;';
-      document.body.appendChild(b);
+        + ';box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer;'
+        + 'display:block;visibility:visible;opacity:1;'
+      );
+      badge.addEventListener('click', function () {
+        _logVisible = !_logVisible;
+        if (_logEl) _logEl.style.setProperty('display', _logVisible ? 'block' : 'none', 'important');
+      });
+      document.body.appendChild(badge);
     }
-    // Log panel — restore buffer content so it's never empty after a DOM wipe
+    // Log panel — use <div> (not <pre>) to avoid game CSS targeting pre.
+    // Use px instead of vh for max-height (some embedded webviews break on vh).
     if (!_logEl || !document.body.contains(_logEl)) {
-      _logEl = document.createElement('pre');
+      _logEl = document.createElement('div');
       _logEl.id = 'zmd-log';
-      _logEl.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;max-height:35vh;'
-        + 'overflow-y:auto;margin:0;padding:6px 8px;font:12px/1.4 monospace;'
+      _logEl.style.cssText = _imp(
+        'position:fixed;bottom:0;left:0;width:100%;max-height:200px;min-height:48px;'
+        + 'overflow-y:auto;overflow-x:hidden;margin:0;padding:6px 8px;'
+        + 'box-sizing:border-box;'
+        + 'font-size:12px;font-family:monospace;line-height:1.4;'
         + 'background:rgba(0,0,0,.85);color:#0f0;z-index:2147483647;'
-        + 'pointer-events:auto;user-select:text;white-space:pre-wrap;word-break:break-all;';
+        + 'pointer-events:auto;user-select:text;'
+        + 'white-space:pre-wrap;word-break:break-all;'
+        + 'display:' + (_logVisible ? 'block' : 'none') + ';visibility:visible;opacity:1;'
+        + 'border:none;text-align:left;float:none;'
+        + 'transform:none;clip:auto;'
+      );
       if (_logBuffer.length) _logEl.textContent = _logBuffer.join('\n') + '\n';
       document.body.appendChild(_logEl);
       _logEl.scrollTop = 1e9;
@@ -64,7 +90,7 @@
   if (document.body) _startGuard();
   else document.addEventListener('DOMContentLoaded', _startGuard);
 
-  L('script loaded');
+  L('script loaded (Chrome/87 compat)');
 
   // ─── Utilities ────────────────────────────────────────────────────────────
 
