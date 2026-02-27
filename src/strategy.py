@@ -41,14 +41,8 @@ class AnswerStrategy:
 
         if page_type == "agreement":
             code = self._agreement_js()
-        elif page_type == "button_groups":
-            code = self._button_groups_js()
-        elif page_type == "div_options":
-            code = self._div_options_js()
-        elif page_type == "div_grid":
-            code = self._div_grid_js()
-        elif page_type == "checkbox_options":
-            code = self._checkbox_options_js()
+        elif page_type == "option_groups":
+            code = self._option_groups_js()
         else:
             code = "console.warn('zmd-survey-smasher: unknown page_type', " + repr(page_type) + ");"
 
@@ -80,138 +74,55 @@ class AnswerStrategy:
         )
 
     # ------------------------------------------------------------------
-    # JS generator: button_groups
+    # JS generator: option_groups
+    # Unified handler for all question types that present selectable options
+    # as either <button> or <div> elements with non-empty text content.
+    # Groups elements by their direct parent, keeps only "leaf" groups
+    # (elements that are not themselves parents of another group), then
+    # clicks the second-to-last element in each group.
     # ------------------------------------------------------------------
 
-    def _button_groups_js(self) -> str:
+    def _option_groups_js(self) -> str:
         advance = self._click_advance_js()
         return (
             "(function(){"
-            "  console.log('[zmd] exec: button_groups');"
-            "  var allBtns = Array.from(document.querySelectorAll('button'));"
-            "  var groupMap = new Map();"
-            "  allBtns.forEach(function(b){"
-            "    var p = b.parentElement;"
-            "    if(!groupMap.has(p)){ groupMap.set(p, []); }"
-            "    groupMap.get(p).push(b);"
+            "  console.log('[zmd] exec: option_groups');"
+            "  var SKIP = ['下一页','提交','上一页'];"
+            "  var candidates = Array.from(document.querySelectorAll('button, div')).filter(function(el){"
+            "    var text = el.textContent.trim();"
+            "    if(!text) return false;"
+            "    if(SKIP.includes(text)) return false;"
+            "    return true;"
             "  });"
+            "  var map = new Map();"
+            "  candidates.forEach(function(el){"
+            "    var p = el.parentElement;"
+            "    if(!p) return;"
+            "    if(!map.has(p)) map.set(p, []);"
+            "    map.get(p).push(el);"
+            "  });"
+            "  var groups = [];"
+            "  map.forEach(function(els, parent){"
+            "    if(els.length < 2) return;"
+            "    var tag = els[0].tagName;"
+            "    if(!els.every(function(e){ return e.tagName === tag; })) return;"
+            "    groups.push({ parent: parent, els: els });"
+            "  });"
+            "  var allGroupParents = new Set(groups.map(function(g){ return g.parent; }));"
+            "  groups = groups.filter(function(g){"
+            "    return !g.els.some(function(e){ return allGroupParents.has(e); });"
+            "  });"
+            "  console.log('[zmd] option_groups: found', groups.length, 'groups');"
             "  var clickedCount = 0;"
-            "  groupMap.forEach(function(btns){"
-            "    if(btns.length >= 2){"
-            "      var idx = btns.length - 2;"
-            "      console.log('[zmd] button_groups: clicking btn[' + idx + '] of ' + btns.length + ' in group, text:', btns[idx].textContent.trim());"
-            "      btns[idx].click();"
-            "      clickedCount++;"
-            "    }"
+            "  groups.forEach(function(g){"
+            "    var els = g.els;"
+            "    var idx = els.length - 2;"
+            "    if(idx < 0) idx = 0;"
+            "    console.log('[zmd] option_groups: clicking [' + idx + '] of ' + els.length + ', text:', els[idx].textContent.trim().slice(0,30));"
+            "    els[idx].click();"
+            "    clickedCount++;"
             "  });"
-            "  console.log('[zmd] button_groups: clicked', clickedCount, 'groups');"
-            "  setTimeout(function(){"
-            f"    {advance}"
-            "  }, 100);"
-            "})();"
-        )
-
-    # ------------------------------------------------------------------
-    # JS generator: div_grid
-    # Handles uniform deeply-nested div grids (sliders, rating grids).
-    # Finds the same container as getDivGridContainer() in inject.js and
-    # clicks the second-to-last child (index len-2).
-    # ------------------------------------------------------------------
-
-    def _div_grid_js(self) -> str:
-        advance = self._click_advance_js()
-        return (
-            "(function(){"
-            "  console.log('[zmd] exec: div_grid');"
-            "  function getDivGridDepth(el){"
-            "    if(el.tagName !== 'DIV') return 0;"
-            "    var kids = Array.from(el.children);"
-            "    if(kids.length === 0) return 1;"
-            "    if(kids.length !== 1) return 0;"
-            "    var d = getDivGridDepth(kids[0]);"
-            "    return d > 0 ? d + 1 : 0;"
-            "  }"
-            "  var found = null;"
-            "  var allDivs = Array.from(document.querySelectorAll('div'));"
-            "  for(var i = 0; i < allDivs.length; i++){"
-            "    var el = allDivs[i];"
-            "    var kids = Array.from(el.children);"
-            "    if(kids.length < 3) continue;"
-            "    var depths = kids.map(getDivGridDepth);"
-            "    if(depths[0] < 2) continue;"
-            "    if(depths.every(function(d){ return d === depths[0]; })){ found = el; break; }"
-            "  }"
-            "  if(found){"
-            "    var children = Array.from(found.children);"
-            "    var idx = children.length - 2;"
-            "    console.log('[zmd] div_grid: clicking child[' + idx + '] of ' + children.length);"
-            "    children[idx].click();"
-            "  } else { console.warn('[zmd] div_grid: container not found'); }"
-            "  setTimeout(function(){"
-            f"    {advance}"
-            "  }, 100);"
-            "})();"
-        )
-
-    # ------------------------------------------------------------------
-    # JS generator: checkbox_options
-    # Handles pages where each answer option is a checkbox inside a label.
-    # Clicks the label of the second-to-last checkbox, then advances.
-    # ------------------------------------------------------------------
-
-    def _checkbox_options_js(self) -> str:
-        advance = self._click_advance_js()
-        return (
-            "(function(){"
-            "  console.log('[zmd] exec: checkbox_options');"
-            "  var cbs = Array.from(document.querySelectorAll('input[type=\"checkbox\"]'));"
-            "  console.log('[zmd] checkbox_options: found', cbs.length, 'checkboxes');"
-            "  if(cbs.length > 0){"
-            "    var idx = Math.max(0, cbs.length - 2);"
-            "    var cb = cbs[idx];"
-            "    var label = cb.closest('label');"
-            "    if(label){ label.click(); console.log('[zmd] checkbox_options: clicked label[' + idx + ']'); }"
-            "    else{ cb.click(); console.log('[zmd] checkbox_options: clicked checkbox[' + idx + ']'); }"
-            "    try{ cb.dispatchEvent(new Event('change', { bubbles: true })); }catch(e){}"
-            "  }"
-            "  setTimeout(function(){"
-            f"    {advance}"
-            "  }, 100);"
-            "})();"
-        )
-
-    # ------------------------------------------------------------------
-    # JS generator: div_options
-    # ------------------------------------------------------------------
-
-    def _div_options_js(self) -> str:
-        advance = self._click_advance_js()
-        return (
-            "(function(){"
-            "  console.log('[zmd] exec: div_options');"
-            # Find the container: a div whose direct children are all divs,
-            # each child has exactly 2 child divs, second of which has 2 child divs.
-            "  function isOptionChild(el){"
-            "    if(el.tagName !== 'DIV') return false;"
-            "    var kids = Array.from(el.children);"
-            "    if(kids.length !== 2) return false;"
-            "    var second = kids[1];"
-            "    return second.tagName === 'DIV' && second.children.length === 2;"
-            "  }"
-            "  function isContainer(el){"
-            "    var kids = Array.from(el.children);"
-            "    if(kids.length < 3 || kids.length > 7) return false;"
-            "    return kids.every(function(k){ return k.tagName === 'DIV' && isOptionChild(k); });"
-            "  }"
-            "  var containers = Array.from(document.querySelectorAll('div')).filter(isContainer);"
-            "  console.log('[zmd] div_options: found', containers.length, 'containers');"
-            "  if(containers.length > 0){"
-            "    var c = containers[0];"
-            "    var children = Array.from(c.children);"
-            "    var idx = children.length - 2;"
-            "    console.log('[zmd] div_options: clicking child[' + idx + '] of ' + children.length);"
-            "    children[idx].click();"
-            "  }"
+            "  console.log('[zmd] option_groups: clicked', clickedCount, 'groups');"
             "  setTimeout(function(){"
             f"    {advance}"
             "  }, 100);"

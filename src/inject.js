@@ -91,8 +91,6 @@
     }).catch(function () {});
   }
 
-  // ─── Page detection ───────────────────────────────────────────────────────
-
   // ─── DOM structure logging ──────────────────────────────────────────────
 
   function parentPath(el, depth) {
@@ -116,44 +114,19 @@
       lines.push('  btn[' + i + '] text=' + JSON.stringify(b.textContent.trim().slice(0, 40)) + ' path=' + parentPath(b, 4));
     });
 
-    // Button groups by parent
-    var groupMap = new Map();
-    allBtns.forEach(function (b) {
-      var p = b.parentElement;
-      if (!groupMap.has(p)) groupMap.set(p, []);
-      groupMap.get(p).push(b);
-    });
-    var gi = 0;
-    groupMap.forEach(function (btns, parent) {
-      if (btns.length >= 2) {
-        lines.push('  Group[' + gi + '] (' + btns.length + ' btns) parent=' + parentPath(parent, 3)
-          + ' texts=[' + btns.map(function (b) { return JSON.stringify(b.textContent.trim().slice(0, 20)); }).join(', ') + ']');
-        gi++;
-      }
-    });
-
     // Checkbox
     var cb = document.querySelector('input[type="checkbox"]');
     if (cb) {
       lines.push('Checkbox: checked=' + cb.checked + ' path=' + parentPath(cb, 4));
     }
 
-    // Div options containers (icon+text structure)
-    var divContainers = Array.from(document.querySelectorAll('div')).filter(isContainer);
-    lines.push('Div option containers: ' + divContainers.length);
-    divContainers.forEach(function (c, i) {
-      var kids = Array.from(c.children);
-      lines.push('  Container[' + i + '] (' + kids.length + ' children) path=' + parentPath(c, 3));
+    // Unified option groups
+    var optGroups = getOptionGroups();
+    lines.push('Option groups (' + optGroups.length + '):');
+    optGroups.forEach(function (els, i) {
+      lines.push('  Group[' + i + '] (' + els.length + ' ' + els[0].tagName + ') texts=['
+        + els.map(function (e) { return JSON.stringify(e.textContent.trim().slice(0, 20)); }).join(', ') + ']');
     });
-
-    // Div grid containers (uniform deep nesting)
-    var gc = getDivGridContainer();
-    if (gc) {
-      var gkids = Array.from(gc.children);
-      lines.push('Div grid container: ' + gkids.length + ' children, path=' + parentPath(gc, 3));
-    } else {
-      lines.push('Div grid container: none');
-    }
 
     var dump = lines.join('\n');
     console.log(dump);
@@ -177,115 +150,62 @@
     return false;
   }
 
-  function getButtonGroups() {
-    var allBtns = Array.from(document.querySelectorAll('button'));
+  // ─── Unified option-group detection ─────────────────────────────────────
+  // An "option" is any <button> or <div> with non-empty text that is not a
+  // navigation control.  Elements are grouped by their direct parent; groups
+  // where every sibling shares the same tag and there are ≥2 siblings qualify.
+  // To avoid matching outer wrapper divs, we keep only "leaf" groups — groups
+  // whose member elements are not themselves parents of another qualifying group.
+
+  function getOptionGroups() {
+    var candidates = Array.from(document.querySelectorAll('button, div')).filter(function (el) {
+      var text = el.textContent.trim();
+      if (!text) return false;
+      if (SKIP_BUTTON_TEXTS.includes(text)) return false;
+      return true;
+    });
+
     var map = new Map();
-    allBtns.forEach(function (b) {
-      var p = b.parentElement;
+    candidates.forEach(function (el) {
+      var p = el.parentElement;
+      if (!p) return;
       if (!map.has(p)) map.set(p, []);
-      map.get(p).push(b);
+      map.get(p).push(el);
     });
+
     var groups = [];
-    map.forEach(function (btns) {
-      if (btns.length >= 2) groups.push(btns);
+    map.forEach(function (els, parent) {
+      if (els.length < 2) return;
+      var tag = els[0].tagName;
+      if (!els.every(function (e) { return e.tagName === tag; })) return;
+      groups.push({ parent: parent, els: els });
     });
-    return groups;
-  }
 
-  function isOptionChild(el) {
-    if (el.tagName !== 'DIV') return false;
-    var kids = Array.from(el.children);
-    if (kids.length !== 2) return false;
-    var second = kids[1];
-    return second.tagName === 'DIV' && second.children.length === 2;
-  }
+    // Keep only leaf groups: discard any group whose member elements are
+    // themselves the parent of another group.
+    var allGroupParents = new Set(groups.map(function (g) { return g.parent; }));
+    groups = groups.filter(function (g) {
+      return !g.els.some(function (e) { return allGroupParents.has(e); });
+    });
 
-  function isContainer(el) {
-    var kids = Array.from(el.children);
-    if (kids.length < 3 || kids.length > 7) return false;
-    return kids.every(function (k) { return k.tagName === 'DIV' && isOptionChild(k); });
-  }
-
-  function getDivOptionsContainer() {
-    return Array.from(document.querySelectorAll('div')).find(isContainer) || null;
-  }
-
-  // div_grid: a container whose children are all divs with a uniform single-child
-  // nesting chain (depth ≥2). Handles sliders, rating grids, etc.
-  // Each child: div > div > ... (any uniform depth, all children structurally identical).
-  function getDivGridDepth(el) {
-    // Returns depth of single-child div chain, or 0 if not uniform.
-    if (el.tagName !== 'DIV') return 0;
-    var kids = Array.from(el.children);
-    if (kids.length === 0) return 1;  // leaf
-    if (kids.length !== 1) return 0;  // not single-child
-    var d = getDivGridDepth(kids[0]);
-    return d > 0 ? d + 1 : 0;
-  }
-
-  function getDivGridContainer() {
-    var allDivs = Array.from(document.querySelectorAll('div'));
-    for (var i = 0; i < allDivs.length; i++) {
-      var el = allDivs[i];
-      var kids = Array.from(el.children);
-      if (kids.length < 3) continue;
-      // All children must be DIVs with the same uniform depth ≥2
-      var depths = kids.map(getDivGridDepth);
-      if (depths[0] < 2) continue;
-      var allSame = depths.every(function (d) { return d === depths[0]; });
-      if (allSame) return el;
-    }
-    return null;
-  }
-
-  function detectCheckboxOptions() {
-    // Any page with ≥1 checkbox that wasn't caught by detectAgreement()
-    return document.querySelectorAll('input[type="checkbox"]').length >= 1;
+    return groups.map(function (g) { return g.els; });
   }
 
   function detectPageType() {
     if (detectAgreement()) return 'agreement';
-    if (getButtonGroups().length > 0) return 'button_groups';
-    if (getDivOptionsContainer()) return 'div_options';
-    if (getDivGridContainer()) return 'div_grid';
-    if (detectCheckboxOptions()) return 'checkbox_options';
+    if (getOptionGroups().length > 0) return 'option_groups';
     return null;
   }
 
   function buildGroups(pageType) {
     if (pageType === 'agreement') return [];
-    if (pageType === 'button_groups') {
-      return getButtonGroups().map(function (btns, i) {
+    if (pageType === 'option_groups') {
+      return getOptionGroups().map(function (els, i) {
         return {
           index: i,
-          option_texts: btns.map(function (b) { return b.textContent.trim(); })
+          option_texts: els.map(function (e) { return e.textContent.trim(); }),
         };
       });
-    }
-    if (pageType === 'div_options') {
-      var container = getDivOptionsContainer();
-      if (!container) return [];
-      var texts = Array.from(container.children).map(function (c) {
-        var textArea = c.children[1];
-        return textArea ? textArea.textContent.trim() : '';
-      });
-      return [{ index: 0, option_texts: texts }];
-    }
-    if (pageType === 'div_grid') {
-      var gc = getDivGridContainer();
-      if (!gc) return [];
-      var kids = Array.from(gc.children);
-      return [{ index: 0, option_texts: kids.map(function (k) { return k.textContent.trim(); }) }];
-    }
-    if (pageType === 'checkbox_options') {
-      var cbs = Array.from(document.querySelectorAll('input[type="checkbox"]'));
-      return [{
-        index: 0,
-        option_texts: cbs.map(function (cb) {
-          var label = cb.closest('label');
-          return label ? label.textContent.trim() : '';
-        })
-      }];
     }
     return [];
   }
@@ -297,35 +217,33 @@
   }
 
   async function handleFallback(retries) {
-    retries = retries === undefined ? 3 : retries;
+    retries = retries === undefined ? 10 : retries;
     for (var attempt = 0; attempt < retries; attempt++) {
-      console.warn('[zmd] fallback attempt ' + (attempt + 1));
-      wsSendLog('[zmd] fallback attempt ' + (attempt + 1));
+      console.warn('[zmd] fallback attempt ' + (attempt + 1) + '/' + retries);
+      wsSendLog('[zmd] fallback attempt ' + (attempt + 1) + '/' + retries);
 
-      // Randomly click options from every detected group.
-      // Filter out any buttons that look like navigation (下一页/提交/上一页).
-      var groups = getButtonGroups();
+      // For every detected option group, randomly pick 1–3 options and click them.
+      var groups = getOptionGroups();
       if (groups.length > 0) {
-        groups.forEach(function (btns) {
-          var options = btns.filter(function (b) {
-            return !SKIP_BUTTON_TEXTS.includes(b.textContent.trim());
-          });
-          if (options.length === 0) return;
-          var count = 1 + Math.floor(Math.random() * Math.min(2, options.length));
-          var shuffled = options.slice().sort(function () { return Math.random() - 0.5; });
-          shuffled.slice(0, count).forEach(function (b) {
-            console.log('[zmd] fallback: clicking button:', b.textContent.trim());
-            b.click();
+        groups.forEach(function (els) {
+          var count = 1 + Math.floor(Math.random() * Math.min(3, els.length));
+          var shuffled = els.slice().sort(function () { return Math.random() - 0.5; });
+          shuffled.slice(0, count).forEach(function (e) {
+            console.log('[zmd] fallback: clicking:', e.textContent.trim().slice(0, 30));
+            e.click();
           });
         });
       } else {
-        var container = getDivOptionsContainer();
-        if (container) {
-          var kids = Array.from(container.children);
-          var idx = Math.floor(Math.random() * kids.length);
-          console.log('[zmd] fallback: clicking div option index', idx);
-          kids[idx].click();
-        }
+        // No text-based groups found — try every non-nav button at random.
+        var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
+          return !SKIP_BUTTON_TEXTS.includes(b.textContent.trim());
+        });
+        var count = Math.min(3, allBtns.length);
+        allBtns.slice().sort(function () { return Math.random() - 0.5; }).slice(0, count)
+          .forEach(function (b) {
+            console.log('[zmd] fallback: clicking button:', b.textContent.trim());
+            b.click();
+          });
       }
 
       // Give the DOM time to register the clicks before advancing.
@@ -342,7 +260,7 @@
       await sleep(500);
       if (!hasUnansweredError()) return;
     }
-    // Reset lastKey so the page can be retried on next DOM mutation
+    // Reset lastKey so the page can be retried on next DOM mutation.
     lastKey = '';
     wsSendLog('fallback exhausted after ' + retries + ' retries');
     console.error('[zmd] fallback exhausted');
@@ -403,7 +321,7 @@
       // Watch for unanswered error within 200 ms
       await sleep(200);
       if (hasUnansweredError()) {
-        await handleFallback(3);
+        await handleFallback();
       }
     } finally {
       processing = false;
