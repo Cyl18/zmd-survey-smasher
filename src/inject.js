@@ -12,6 +12,7 @@
   // ─── On-page log panel (created synchronously, same as badge) ──────────
 
   var _logEl = null;
+  var _logBuffer = [];   // survives DOM wipes; capped at 200 lines
 
   function _initUI() {
     if (!document.body) return;
@@ -26,7 +27,7 @@
         + ';box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;';
       document.body.appendChild(b);
     }
-    // Log panel
+    // Log panel — restore buffer content so it's never empty after a DOM wipe
     if (!_logEl || !document.body.contains(_logEl)) {
       _logEl = document.createElement('pre');
       _logEl.id = 'zmd-log';
@@ -34,12 +35,16 @@
         + 'overflow-y:auto;margin:0;padding:6px 8px;font:12px/1.4 monospace;'
         + 'background:rgba(0,0,0,.85);color:#0f0;z-index:2147483647;'
         + 'pointer-events:auto;user-select:text;white-space:pre-wrap;word-break:break-all;';
+      if (_logBuffer.length) _logEl.textContent = _logBuffer.join('\n') + '\n';
       document.body.appendChild(_logEl);
+      _logEl.scrollTop = 1e9;
     }
   }
 
   function L(msg) {
     try { console.log('[zmd]', msg); } catch(e) {}
+    _logBuffer.push(msg);
+    if (_logBuffer.length > 200) _logBuffer.shift();
     try {
       if (!document.body) return;
       _initUI();
