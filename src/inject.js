@@ -1,9 +1,8 @@
 // inject.js — injected by mitmproxy into survey.hypergryph.com HTML pages
-// {{WS_PORT}} and {{DEBUG_NO_SUBMIT}} are substituted at intercept time.
+// {{DEBUG_NO_SUBMIT}} is substituted at intercept time.
 (function () {
   'use strict';
 
-  const WS_PORT = {{WS_PORT}};
   const DEBUG_NO_SUBMIT = {{DEBUG_NO_SUBMIT}};
   const ADVANCE_TEXTS = DEBUG_NO_SUBMIT ? ['下一页'] : ['下一页', '提交'];
   const SKIP_BUTTON_TEXTS = ['下一页', '提交', '上一页'];
@@ -62,70 +61,34 @@
     return new Promise(function (r) { return setTimeout(r, ms); });
   }
 
-  // ─── WebSocket connection ─────────────────────────────────────────────────
+  // ─── HTTP fetch transport ─────────────────────────────────────────────────
 
-  var ws = null;
-  var wsReady = false;
-  var pendingResolve = null;   // resolve function waiting for eval response
+  const _QUERY_URL = 'https://survey.hypergryph.com/__zmd_query__';
+  const _LOG_URL   = 'https://survey.hypergryph.com/__zmd_log__';
 
-  async function connectWs(retries) {
-    retries = retries === undefined ? 5 : retries;
-    for (var i = 0; i < retries; i++) {
-      try {
-        await new Promise(function (resolve, reject) {
-          var sock = new WebSocket('ws://127.0.0.1:' + WS_PORT);
-          sock.onopen = function () {
-            ws = sock;
-            wsReady = true;
-            resolve();
-          };
-          sock.onmessage = function (e) {
-            try {
-              var msg = JSON.parse(e.data);
-              if (msg.type === 'eval' && pendingResolve) {
-                var res = pendingResolve;
-                pendingResolve = null;
-                res(msg);
-              }
-            } catch (err) {
-              console.error('[zmd] WS message parse error', err);
-            }
-          };
-          sock.onerror = function () { reject(new Error('ws error')); };
-          sock.onclose = function () { wsReady = false; };
-        });
-        console.log('[zmd] WS connected on port ' + WS_PORT);
-        return true;
-      } catch (_) {
-        console.warn('[zmd] WS connect attempt ' + (i + 1) + ' failed, retrying...');
-        await sleep(10);
-      }
-    }
-    console.error('[zmd] WS failed to connect after ' + retries + ' retries');
-    return false;
-  }
-
-  function sendQuery(payload) {
+  async function sendQuery(payload) {
     console.log('[zmd] sendQuery:', payload && payload.page_type);
-    return new Promise(function (resolve) {
-      pendingResolve = function (msg) {
-        console.log('[zmd] sendQuery: recv', msg && msg.type);
-        resolve(msg);
-      };
-      try {
-        ws.send(JSON.stringify(payload));
-      } catch (e) {
-        console.error('[zmd] ws send error', e);
-        pendingResolve = null;
-        resolve(null);
-      }
-    });
+    try {
+      var resp = await fetch(_QUERY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      var msg = await resp.json();
+      console.log('[zmd] sendQuery: recv', msg && msg.type);
+      return msg;
+    } catch (e) {
+      console.error('[zmd] sendQuery fetch error', e);
+      return null;
+    }
   }
 
   function wsSendLog(message) {
-    if (ws && wsReady) {
-      try { ws.send(JSON.stringify({ type: 'log', message: message })); } catch (_) {}
-    }
+    fetch(_LOG_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'log', message: message }),
+    }).catch(function () {});
   }
 
   // ─── Page detection ───────────────────────────────────────────────────────
@@ -403,11 +366,6 @@
     if (key === lastKey) return;
     lastKey = key;
 
-    if (!wsReady) {
-      console.warn('[zmd] WS not ready, skipping page');
-      return;
-    }
-
     processing = true;
     try {
       // Dump DOM structure for debugging
@@ -420,7 +378,7 @@
         return;
       }
       console.log('[zmd] detected page type:', pageType);
-      try { if (ws && wsReady) wsSendLog('[zmd] detected page type: ' + pageType); } catch (e) {}
+      wsSendLog('[zmd] detected page type: ' + pageType);
 
       var payload = {
         type: 'query',
@@ -467,7 +425,7 @@
     // Search the whole document for any button/role=button whose text contains 取消
     var allBtns = Array.from(document.querySelectorAll('button, [role="button"], a'));
     console.log('[zmd] resume-dialog: found buttons:', allBtns.map(function(b){ return JSON.stringify(b.textContent.trim()); }).join(', '));
-    try { if (ws && wsReady) wsSendLog('[zmd] resume-dialog: found ' + allBtns.length + ' buttons'); } catch (e) {}
+    wsSendLog('[zmd] resume-dialog: found ' + allBtns.length + ' buttons');
     var cancelBtn = allBtns.find(function (b) {
       var t = b.textContent.trim();
       return t === '取消' || t.includes('取消');
@@ -477,7 +435,7 @@
       dialogDismissed = true;
       lastKey = '';  // reset so next page gets processed
       console.log('[zmd] dismissed resume-dialog (取消)');
-      try { if (ws && wsReady) wsSendLog('[zmd] dismissed resume-dialog (取消)'); } catch (e) {}
+      wsSendLog('[zmd] dismissed resume-dialog (取消)');
       return true;
     }
 
@@ -491,7 +449,7 @@
       dialogDismissed = true;
       lastKey = '';  // reset so next page gets processed
       console.log('[zmd] dismissed resume-dialog (下一页 fallback)');
-      try { if (ws && wsReady) wsSendLog('[zmd] dismissed resume-dialog (下一页 fallback)'); } catch (e) {}
+      wsSendLog('[zmd] dismissed resume-dialog (下一页 fallback)');
       return true;
     }
 
@@ -502,9 +460,6 @@
   // ─── Bootstrap ────────────────────────────────────────────────────────────
 
   async function bootstrap() {
-    var ok = await connectWs(5);
-    if (!ok) return;
-
     // Delay startup slightly to allow SPA rendering / CSS to stabilise.
     console.log('[zmd] bootstrap: delaying 1s before processing');
     await sleep(1000);

@@ -28,8 +28,6 @@ from PyQt6.QtWidgets import (
 
 from cert_installer import install_ca_cert
 from proxy_manager import ProxyManager, clear_system_proxy, set_system_proxy
-from strategy import AnswerStrategy
-from ws_server import WsServer
 
 
 class CertInstallThread(QThread):
@@ -50,7 +48,6 @@ class MainWindow(QMainWindow):
         self.resize(640, 480)
 
         self._proxy_manager: ProxyManager | None = None
-        self._ws_server: WsServer | None = None
         self._running = False
 
         self._build_ui()
@@ -156,18 +153,14 @@ class MainWindow(QMainWindow):
                     except OSError:
                         raise RuntimeError(f"端口 {proxy_port} 已被占用，请换一个端口或设为0自动分配")
 
-            strategy = AnswerStrategy(debug_no_submit=debug_no_submit)
-            ws_server = WsServer(strategy, log_callback=self.log_signal.emit)
             proxy_manager = ProxyManager()
             proxy_manager.start(
-                ws_server=ws_server,
                 proxy_port=proxy_port,
                 debug_no_submit=debug_no_submit,
                 log_callback=self.log_signal.emit,
             )
             set_system_proxy(proxy_port)
 
-            self._ws_server = ws_server
             self._proxy_manager = proxy_manager
             self._running = True
 
@@ -175,7 +168,6 @@ class MainWindow(QMainWindow):
             self._status_label.setStyleSheet("color: green; font-weight: bold;")
             self._stop_btn.setEnabled(True)
 
-            self._append_log(f"WS server on :{ws_server.port}")
             self._append_log(f"Proxy on :{proxy_port}" + (" [调试：不提交]" if debug_no_submit else ""))
             self._append_log("⚠ 提示：若问卷已在游戏中打开，请在游戏内刷新/重新进入问卷页面，使流量经由代理拦截。")
         except Exception as exc:  # noqa: BLE001
@@ -202,7 +194,6 @@ class MainWindow(QMainWindow):
             except Exception as exc:  # noqa: BLE001
                 self._append_log(f"停止代理失败: {exc}")
             self._proxy_manager = None
-            self._ws_server = None
 
         self._running = False
         self._status_label.setText("● 已停止")

@@ -1,12 +1,11 @@
 """
-ProxyManager: runs mitmproxy + WS server in a background asyncio thread.
+ProxyManager: runs mitmproxy in a background asyncio thread.
 Also manages the Windows system proxy via winreg.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 import threading
 import winreg
 
@@ -14,7 +13,6 @@ from mitmproxy.options import Options
 from mitmproxy.tools.dump import DumpMaster
 
 from addon import SurveyAddon
-from ws_server import WsServer
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +46,6 @@ class ProxyManager:
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._master: DumpMaster | None = None
-        self._ws_server: WsServer | None = None  # set in start()
         self._ready_event = threading.Event()
         self._proxy_port: int = 8080
 
@@ -58,19 +55,14 @@ class ProxyManager:
 
     def start(
         self,
-        ws_server: WsServer,
         proxy_port: int = 8080,
         debug_no_submit: bool = False,
         log_callback=None,
     ) -> None:
         """
-        Start the background asyncio loop:
-          1. Start WS server (port assigned by OS)
-          2. Start mitmproxy DumpMaster on *proxy_port*
-
-        Blocks until WS server is ready so callers can read ws_server.port.
+        Start the background asyncio loop with mitmproxy DumpMaster on *proxy_port*.
+        Blocks until the proxy is ready.
         """
-        self._ws_server = ws_server
         self._proxy_port = proxy_port
         self._ready_event.clear()
         self._debug_no_submit = debug_no_submit
@@ -83,13 +75,13 @@ class ProxyManager:
             name="proxy-asyncio",
         )
         self._thread.start()
-        self._ready_event.wait()  # wait until WS port is known
+        self._ready_event.wait()
 
     def stop(self) -> None:
         if self._loop is None:
             return
-        # Use master.shutdown() rather than loop.stop() so that _async_main's
-        # finally block (ws_server.stop) runs before the loop closes, avoiding
+        # Use master.shutdown() rather than loop.stop() so mitmproxy can clean
+        # up its own tasks before the loop closes, avoiding
         # "RuntimeError: Event loop is closed" from abandoned pending tasks.
         if self._master is not None:
             self._loop.call_soon_threadsafe(self._master.shutdown)
@@ -127,23 +119,18 @@ class ProxyManager:
             loop.close()
 
     async def _async_main(self, proxy_port: int, debug_no_submit: bool) -> None:
-        assert self._ws_server is not None
-        # 1. Start WS server
-        await self._ws_server.start()
-
-        # 2. Build mitmproxy master
         opts = Options(listen_host="127.0.0.1", listen_port=proxy_port)
         master = DumpMaster(opts, with_termlog=False, with_dumper=False)
-        master.addons.add(SurveyAddon(self._ws_server.port, debug_no_submit))
+        master.addons.add(SurveyAddon(
+            debug_no_submit=debug_no_submit,
+            log_callback=self._log_callback,
+        ))
         self._master = master
 
-        # 3. Signal readiness (ws_server.port is set)
+        # Signal readiness
         self._ready_event.set()
 
-        # 4. Run until stopped
         try:
             await master.run()
         except Exception as exc:  # noqa: BLE001
             logger.warning("mitmproxy master exited: %s", exc)
-        finally:
-            await self._ws_server.stop()
