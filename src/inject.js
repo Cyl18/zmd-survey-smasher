@@ -445,16 +445,35 @@
   function clickEl(el) {
     var inp = (el.tagName === 'INPUT') ? el : el.querySelector('input[type="radio"], input[type="checkbox"]');
     if (inp) {
-      // React uses a native property setter internally; calling it triggers React's onChange
-      try {
-        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
-        if (setter && setter.set) setter.set.call(inp, true);
-      } catch (e) {}
       var lbl = inp.closest('label') || (inp.id && document.querySelector('label[for="' + inp.id + '"]'));
-      try {
-        if (lbl) lbl.click();
-        else inp.click();
-      } catch (e) {}
+      if (inp.type === 'checkbox') {
+        // Checkbox: click toggles, so only click if unchecked.
+        // Do NOT call native setter before click — that sets .checked=true
+        // and then label.click() would toggle it back off.
+        if (!inp.checked) {
+          try {
+            if (lbl) lbl.click();
+            else inp.click();
+          } catch (e) {}
+        }
+        // If still not checked, force via native setter
+        if (!inp.checked) {
+          try {
+            var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
+            if (setter && setter.set) setter.set.call(inp, true);
+          } catch (e) {}
+        }
+      } else {
+        // Radio: native setter + click is safe (clicking a selected radio is a no-op)
+        try {
+          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
+          if (setter && setter.set) setter.set.call(inp, true);
+        } catch (e) {}
+        try {
+          if (lbl) lbl.click();
+          else inp.click();
+        } catch (e) {}
+      }
       try { inp.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
       try { inp.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
       return;
@@ -477,22 +496,26 @@
     L('action: agreement');
     var input = document.querySelector('input[type="checkbox"]');
     if (input) {
-      // Use native setter for React compatibility
-      try {
-        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
-        if (setter && setter.set) setter.set.call(input, true);
-      } catch (e) {}
-      // Only click if still unchecked — label.click() toggles, so calling it on an
-      // already-checked input would uncheck it.
       if (!input.checked) {
+        // Click label/input FIRST to trigger the framework's change handler.
+        // Do NOT call the native setter before the click — that sets .checked=true,
+        // and then label.click() would toggle it back off (checkbox semantics).
         var label = input.closest('label');
         try {
           if (label) label.click();
           else input.click();
         } catch (e) { L('agreement click failed: ' + e); }
       }
-      try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
-      try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      // If the click didn't check it, force via native setter + events
+      if (!input.checked) {
+        L('agreement: click did not check — using native setter');
+        try {
+          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
+          if (setter && setter.set) setter.set.call(input, true);
+        } catch (e) {}
+        try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+        try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      }
     }
     setTimeout(function () {
       var b = findAdvanceButton();
@@ -616,7 +639,7 @@
   function handleFallback(attempt, maxRetries, done) {
     attempt = attempt || 0;
     maxRetries = maxRetries || 10;
-    if (attempt >= maxRetries) { lastKey = ''; L('fallback exhausted'); done(); return; }
+    if (attempt >= maxRetries) { L('fallback exhausted — waiting for page change'); done(); return; }
     L('fallback ' + (attempt + 1) + '/' + maxRetries);
 
     // Try all interactive element types
