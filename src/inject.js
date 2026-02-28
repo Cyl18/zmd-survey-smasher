@@ -54,11 +54,13 @@
     if (!btn) btn = document.getElementById('zmd-toggle');
     if (!btn) return;
     if (_autoEnabled) {
-      btn.textContent = '\u25b6 \u81ea\u52a8';
+      btn.textContent = '\u25b6 \u81ea\u52a8\u4e2d\uff08\u70b9\u51fb\u6682\u505c\uff09';
+      btn.title = '\u70b9\u51fb\u6682\u505c\u81ea\u52a8\u586b\u5199';
       btn.style.setProperty('background', '#16a34a', 'important');
       btn.style.setProperty('color', '#fff', 'important');
     } else {
-      btn.textContent = '\u23f8 \u6682\u505c';
+      btn.textContent = '\u23f8 \u5df2\u6682\u505c\uff08\u70b9\u51fb\u6062\u590d\uff09';
+      btn.title = '\u70b9\u51fb\u6062\u590d\u81ea\u52a8\u586b\u5199';
       btn.style.setProperty('background', '#6b7280', 'important');
       btn.style.setProperty('color', '#fff', 'important');
     }
