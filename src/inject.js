@@ -317,9 +317,19 @@
 
   function getOptionGroups() {
     var btnGroups = getButtonGroups();
-    if (btnGroups.length > 0) return btnGroups;
     var divGroups = getDivOptionContainers();
-    if (divGroups.length > 0) return divGroups;
+
+    // divGroups whose every element is a <button> are just the parent containers
+    // of btnGroups re-detected — they duplicate btnGroups and must be excluded.
+    // divGroups with non-button elements are genuinely separate questions (e.g.
+    // a satisfaction scale rendered as divs alongside button-based questions).
+    var divOnly = divGroups.filter(function (grp) {
+      return grp.every(function (el) { return el.tagName !== 'BUTTON'; });
+    });
+
+    var combined = btnGroups.concat(divOnly);
+    if (combined.length > 0) return combined;
+
     var radioGroups = getRadioGroups();
     if (radioGroups.length > 0) return radioGroups;
     return [];
