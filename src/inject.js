@@ -457,7 +457,7 @@
         var hasInteractive = nBtn > 0 || nCb > 0 || nRd > 0;
         if (hasInteractive) {
           L('\u26a0 unknown page type \u2014 trying fallback');
-          handleFallback(0, 10, function () { processing = false; });
+          handleFallback(0, 10, function () { processing = false; processPage(); });
         } else {
           L('\u26a0 unknown page type (no interactive elements)');
           processing = false;
@@ -477,9 +477,10 @@
     // Check for unanswered error after a short delay
     setTimeout(function () {
       if (hasUnansweredError()) {
-        handleFallback(0, 10, function () { processing = false; });
+        handleFallback(0, 10, function () { processing = false; processPage(); });
       } else {
         processing = false;
+        processPage();
       }
     }, 100);
   }
