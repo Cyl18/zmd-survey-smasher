@@ -58,7 +58,7 @@ PyQt6 GUI（主线程）
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourname/zmd-survey-smasher
+git clone https://github.com/Cyl18/zmd-survey-smasher
 cd zmd-survey-smasher
 
 # 安装依赖（uv 自动创建虚拟环境）
@@ -70,7 +70,7 @@ uv run src/main.py
 
 ### 方式二：使用打包好的 exe
 
-从 Releases 页面下载 `zmd-survey-smasher.zip`，解压后运行 `zmd-survey-smasher.exe`，**不需要**安装 Python。
+从 Releases 页面下载 `zmd-survey-smasher.exe`，直接运行，**不需要**安装 Python。
 
 ---
 
@@ -114,8 +114,6 @@ uv run pyinstaller build.spec
 
 产物位于 `dist/zmd-survey-smasher/`，将整个目录打包分发即可（`--onedir` 模式，因 `mitmproxy_rs` 的 Rust 扩展在 `--onefile` 模式下无法可靠自解压）。
 
----
-
 ## 项目结构
 
 ```
@@ -133,5 +131,3 @@ zmd-survey-smasher/
     ├── cache_cleaner.py     # 游戏浏览器缓存清理
     └── inject.js            # 注入到问卷页面的客户端脚本
 ```
-
-2.无法识别div组
