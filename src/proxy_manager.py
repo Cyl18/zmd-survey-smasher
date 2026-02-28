@@ -58,7 +58,6 @@ class ProxyManager:
     def start(
         self,
         proxy_port: int = 8080,
-        debug_no_submit: bool = False,
         log_callback=None,
     ) -> None:
         """
@@ -67,12 +66,11 @@ class ProxyManager:
         """
         self._proxy_port = proxy_port
         self._ready_event.clear()
-        self._debug_no_submit = debug_no_submit
         self._log_callback = log_callback
 
         self._thread = threading.Thread(
             target=self._thread_main,
-            args=(proxy_port, debug_no_submit),
+            args=(proxy_port,),
             daemon=True,
             name="proxy-asyncio",
         )
@@ -96,12 +94,12 @@ class ProxyManager:
     # Background thread
     # ------------------------------------------------------------------
 
-    def _thread_main(self, proxy_port: int, debug_no_submit: bool) -> None:
+    def _thread_main(self, proxy_port: int) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._loop = loop
         try:
-            loop.run_until_complete(self._async_main(proxy_port, debug_no_submit))
+            loop.run_until_complete(self._async_main(proxy_port))
         except Exception as exc:
             logger.error("ProxyManager background loop error: %s", exc)
         finally:
@@ -120,14 +118,13 @@ class ProxyManager:
                 pass
             loop.close()
 
-    async def _async_main(self, proxy_port: int, debug_no_submit: bool) -> None:
+    async def _async_main(self, proxy_port: int) -> None:
         ws = WsServer(AnswerStrategy(), log_callback=self._log_callback)
         await ws.start()
 
         opts = Options(listen_host="127.0.0.1", listen_port=proxy_port)
         master = DumpMaster(opts, with_termlog=False, with_dumper=False)
         master.addons.add(SurveyAddon(
-            debug_no_submit=debug_no_submit,
             ws_port=ws.port,
             log_callback=self._log_callback,
         ))

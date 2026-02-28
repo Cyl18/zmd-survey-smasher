@@ -1,13 +1,11 @@
 // inject.js — injected by mitmproxy into survey.hypergryph.com HTML pages
-// {{DEBUG_NO_SUBMIT}} is substituted at intercept time.
 // NOTE: no async/await — some QtWebEngine builds break on it silently.
 // NOTE: Chrome/87 compat — no <pre>, no vh units, all styles !important.
 (function () {
   'use strict';
 
-  var DEBUG_NO_SUBMIT = {{DEBUG_NO_SUBMIT}};
   var WS_PORT = {{WS_PORT}};
-  var ADVANCE_TEXTS = DEBUG_NO_SUBMIT ? ['下一页'] : ['下一页', '提交'];
+  var ADVANCE_TEXTS = ['下一页'];
   var SKIP_BUTTON_TEXTS = ['下一页', '提交', '上一页'];
   var dialogDismissed = false;
   var _autoEnabled = true;
@@ -73,12 +71,12 @@
     if (!badge) {
       badge = document.createElement('div');
       badge.id = 'zmd-badge';
-      badge.textContent = '\u2705 \u5df2\u6ce8\u5165' + (DEBUG_NO_SUBMIT ? ' \u26a0\u8c03\u8bd5' : '');
+      badge.textContent = '\u2705 \u5df2\u6ce8\u5165';
       badge.style.cssText = _imp(
         'position:fixed;top:8px;right:8px;z-index:2147483647;'
         + 'padding:6px 14px;border-radius:6px;font-size:14px;font-weight:bold;'
         + 'font-family:system-ui,sans-serif;line-height:1.4;'
-        + 'color:#fff;background:' + (DEBUG_NO_SUBMIT ? '#d97706' : '#16a34a')
+        + 'color:#fff;background:#16a34a'
         + ';box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer;'
         + 'display:block;visibility:visible;opacity:1;'
       );

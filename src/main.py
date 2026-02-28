@@ -14,7 +14,6 @@ sys.path.insert(0, os.path.dirname(__file__))
 from PyQt6.QtCore import pyqtSignal, Qt, QThread
 from PyQt6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -93,10 +92,6 @@ class MainWindow(QMainWindow):
         self._proxy_port_spin.setToolTip("0=自动分配可用端口")
         cfg_layout.addWidget(self._proxy_port_spin)
         cfg_layout.addStretch()
-
-        self._debug_checkbox = QCheckBox("调试：仅下一页（不提交）")
-        self._debug_checkbox.setChecked(True)
-        cfg_layout.addWidget(self._debug_checkbox)
         layout.addWidget(cfg_group)
 
         # Button row
@@ -135,10 +130,7 @@ class MainWindow(QMainWindow):
         from port_utils import find_free_port
 
         port_val = self._proxy_port_spin.value()
-        debug_no_submit = self._debug_checkbox.isChecked()
-
         self._start_btn.setEnabled(False)
-        self._debug_checkbox.setEnabled(False)
         self._proxy_port_spin.setEnabled(False)
 
         # ── Auto-clear game cache ──────────────────────────────────────────
@@ -171,7 +163,6 @@ class MainWindow(QMainWindow):
             proxy_manager = ProxyManager()
             proxy_manager.start(
                 proxy_port=proxy_port,
-                debug_no_submit=debug_no_submit,
                 log_callback=self.log_signal.emit,
             )
             set_system_proxy(proxy_port)
@@ -183,12 +174,11 @@ class MainWindow(QMainWindow):
             self._status_label.setStyleSheet("color: green; font-weight: bold;")
             self._stop_btn.setEnabled(True)
 
-            self._append_log(f"Proxy on :{proxy_port}" + (" [调试：不提交]" if debug_no_submit else ""))
+            self._append_log(f"Proxy on :{proxy_port}")
             self._append_log("⚠ 提示：若问卷已在游戏中打开，请在游戏内刷新/重新进入问卷页面，使流量经由代理拦截。")
         except Exception as exc:  # noqa: BLE001
             self._append_log(f"启动失败: {exc}")
             self._start_btn.setEnabled(True)
-            self._debug_checkbox.setEnabled(True)
             self._proxy_port_spin.setEnabled(True)
 
     def _on_stop(self) -> None:
@@ -215,7 +205,6 @@ class MainWindow(QMainWindow):
         self._status_label.setStyleSheet("color: gray; font-weight: bold;")
         self._start_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
-        self._debug_checkbox.setEnabled(True)
         self._proxy_port_spin.setEnabled(True)
         self._append_log("已停止")
 

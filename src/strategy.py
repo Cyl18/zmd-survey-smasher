@@ -6,18 +6,13 @@ from __future__ import annotations
 
 
 class AnswerStrategy:
-    def __init__(self, debug_no_submit: bool = False) -> None:
-        self.debug_no_submit = debug_no_submit
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _advance_texts_js(self) -> str:
         """Return the JS array literal for advance button text matching."""
-        if self.debug_no_submit:
-            return "['下一页']"
-        return "['下一页','提交']"
+        return "['下一页']"
 
     def _click_advance_js(self) -> str:
         """Return JS snippet that finds and clicks the advance button."""
