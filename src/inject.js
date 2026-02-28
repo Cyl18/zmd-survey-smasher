@@ -548,8 +548,8 @@
     setTimeout(function () {
       var b = findAdvanceButton();
       if (b) b.click();
-      setTimeout(onDone, 500);   // wait 500ms for page transition
-    }, 100);
+      setTimeout(onDone, 100);
+    }, 30);
   }
 
   // Stagger option-group clicks 150 ms apart so the framework (React/Vue)
@@ -588,8 +588,8 @@
             L('  advance: clicking' + (unconfirmed.length ? ' (⚠ unconfirmed: [' + unconfirmed.join(',') + '])' : ''));
             b.click();
           }
-          setTimeout(onDone, 300);
-        }, 200);
+          setTimeout(onDone, 50);
+        }, 30);
         return;
       }
       var els = groups[i];
@@ -609,7 +609,7 @@
         L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
         clickEl(els[idx]);
       }
-      setTimeout(function () { doGroup(i + 1); }, 150);
+      setTimeout(function () { doGroup(i + 1); }, 30);
     }
     doGroup(0);
   }
@@ -632,8 +632,8 @@
     setTimeout(function () {
       var b = findAdvanceButton();
       if (b) b.click();
-      setTimeout(onDone, 300);
-    }, 100);
+      setTimeout(onDone, 50);
+    }, 30);
   }
 
   // ─── Fallback (pure setTimeout, no async) ──────────────────────────────
@@ -708,8 +708,8 @@
       setTimeout(function () {
         if (!hasUnansweredError()) { done(); return; }
         handleFallback(attempt + 1, maxRetries, done);
-      }, 100);
-    }, 50);
+      }, 30);
+    }, 30);
   }
 
   // ─── Navigation guard (pure setTimeout, no async) ─────────────────────
@@ -812,7 +812,7 @@
           L('\u26a0 advance did not change page \u2014 waiting');
           processing = false;
         }
-      }, 200);
+      }, 50);
     }
   }
 
@@ -825,7 +825,7 @@
     if (dominated) return;
 
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(function () { processPage(); }, 300);
+    debounceTimer = setTimeout(function () { processPage(); }, 100);
   }
 
   // ─── Dialog dismissal ─────────────────────────────────────────────────────
@@ -845,18 +845,18 @@
   // ─── Bootstrap (pure setTimeout, no async) ────────────────────────────
 
   function bootstrap() {
-    L('bootstrap: waiting 1s...');
+    L('bootstrap: waiting 300ms...');
     setTimeout(function () {
       var dObs = new MutationObserver(function () { if (!dialogDismissed) dismissResumeDialog(); });
       dObs.observe(document.body, { childList: true, subtree: true });
 
       if (dismissResumeDialog()) {
-        L('dialog dismissed, waiting 1s...');
-        setTimeout(function () { startProcessing(); }, 1000);
+        L('dialog dismissed, waiting 300ms...');
+        setTimeout(function () { startProcessing(); }, 300);
       } else {
         startProcessing();
       }
-    }, 1000);
+    }, 300);
   }
 
   function startProcessing() {
