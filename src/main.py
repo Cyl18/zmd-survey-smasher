@@ -175,7 +175,6 @@ class MainWindow(QMainWindow):
             self._stop_btn.setEnabled(True)
 
             self._append_log(f"Proxy on :{proxy_port}")
-            self._append_log("⚠ 提示：若问卷已在游戏中打开，请在游戏内刷新/重新进入问卷页面，使流量经由代理拦截。")
         except Exception as exc:  # noqa: BLE001
             self._append_log(f"启动失败: {exc}")
             self._start_btn.setEnabled(True)
