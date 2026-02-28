@@ -10,6 +10,7 @@
   var ADVANCE_TEXTS = DEBUG_NO_SUBMIT ? ['下一页'] : ['下一页', '提交'];
   var SKIP_BUTTON_TEXTS = ['下一页', '提交', '上一页'];
   var dialogDismissed = false;
+  var _autoEnabled = true;
 
   // ─── Local WebSocket (debug / log forwarding) ─────────────────────────────
 
@@ -51,6 +52,20 @@
     return css.replace(/;/g, ' !important;');
   }
 
+  function _updateToggleBtn(btn) {
+    if (!btn) btn = document.getElementById('zmd-toggle');
+    if (!btn) return;
+    if (_autoEnabled) {
+      btn.textContent = '\u25b6 \u81ea\u52a8';
+      btn.style.setProperty('background', '#16a34a', 'important');
+      btn.style.setProperty('color', '#fff', 'important');
+    } else {
+      btn.textContent = '\u23f8 \u6682\u505c';
+      btn.style.setProperty('background', '#6b7280', 'important');
+      btn.style.setProperty('color', '#fff', 'important');
+    }
+  }
+
   function _initUI() {
     if (!document.body) return;
     // Badge — clickable to toggle log panel
@@ -73,14 +88,34 @@
       });
       document.body.appendChild(badge);
     }
-    // Log panel — positioned at TOP (below badge) because game UI covers
-    // the bottom.  Uses <div> (not <pre>) to dodge game CSS resets.
-    // px units only (no vh — broken in some embedded webviews).
+    // Auto-fill toggle button — below the badge
+    var toggleBtn = document.getElementById('zmd-toggle');
+    if (!toggleBtn) {
+      toggleBtn = document.createElement('div');
+      toggleBtn.id = 'zmd-toggle';
+      toggleBtn.style.cssText = _imp(
+        'position:fixed;top:42px;right:8px;z-index:2147483647;'
+        + 'padding:4px 10px;border-radius:6px;font-size:12px;font-weight:bold;'
+        + 'font-family:system-ui,sans-serif;line-height:1.4;cursor:pointer;'
+        + 'box-shadow:0 2px 8px rgba(0,0,0,.4);'
+        + 'display:block;visibility:visible;opacity:1;'
+      );
+      _updateToggleBtn(toggleBtn);
+      toggleBtn.addEventListener('click', function () {
+        _autoEnabled = !_autoEnabled;
+        _updateToggleBtn(toggleBtn);
+        L(_autoEnabled ? '\u25b6 \u81ea\u52a8\u586b\u5199\u5df2\u5f00\u542f' : '\u23f8 \u81ea\u52a8\u586b\u5199\u5df2\u6682\u505c');
+        if (_autoEnabled) { lastKey = ''; processPage(); }
+      });
+      document.body.appendChild(toggleBtn);
+    }
+    // Log panel — positioned below toggle.  Uses <div> (not <pre>) to dodge
+    // game CSS resets.  px units only (no vh — broken in some embedded webviews).
     if (!_logEl || !document.body.contains(_logEl)) {
       _logEl = document.createElement('div');
       _logEl.id = 'zmd-log';
       _logEl.style.cssText = _imp(
-        'position:fixed;top:40px;right:8px;width:55%;max-height:200px;min-height:32px;'
+        'position:fixed;top:74px;right:8px;width:55%;max-height:200px;min-height:32px;'
         + 'overflow-y:auto;overflow-x:hidden;margin:0;padding:6px 8px;'
         + 'box-sizing:border-box;border-radius:6px;'
         + 'font-size:11px;font-family:monospace;line-height:1.3;'
@@ -125,11 +160,11 @@
 
   // ─── Utilities ────────────────────────────────────────────────────────────
 
-  // Check if a DOM node belongs to our injected UI (log panel / badge).
+  // Check if a DOM node belongs to our injected UI (log panel / badge / toggle).
   function isOwnUI(node) {
     var el = node.nodeType === 1 ? node : node.parentElement;
     while (el) {
-      if (el.id === 'zmd-log' || el.id === 'zmd-badge') return true;
+      if (el.id === 'zmd-log' || el.id === 'zmd-badge' || el.id === 'zmd-toggle') return true;
       el = el.parentElement;
     }
     return false;
@@ -587,7 +622,7 @@
     var textLen = 0;
     for (var i = 0; i < children.length; i++) {
       var ch = children[i];
-      if (ch.id === 'zmd-log' || ch.id === 'zmd-badge') continue;
+      if (ch.id === 'zmd-log' || ch.id === 'zmd-badge' || ch.id === 'zmd-toggle') continue;
       count++;
       textLen += (ch.innerText || '').length;
     }
@@ -595,6 +630,7 @@
   }
 
   function processPage() {
+    if (!_autoEnabled) return;
     if (processing) return;
     var key = pageKey();
     if (key === lastKey) return;
