@@ -405,6 +405,9 @@
   // Returns a human-readable reason string if el appears selected, else null.
   // Used both for the skip decision and for diagnostic logging.
   function _selReason(el) {
+    // Native checked state on radio/checkbox (either the element itself or a child input)
+    var inp = (el.tagName === 'INPUT') ? el : el.querySelector('input[type="radio"], input[type="checkbox"]');
+    if (inp && inp.checked) return 'input:checked';
     if (el.getAttribute('aria-selected') === 'true') return 'aria-selected';
     if (el.getAttribute('aria-pressed') === 'true') return 'aria-pressed';
     if (el.getAttribute('aria-checked') === 'true') return 'aria-checked';
@@ -442,32 +445,56 @@
   function clickEl(el) {
     var inp = (el.tagName === 'INPUT') ? el : el.querySelector('input[type="radio"], input[type="checkbox"]');
     if (inp) {
+      // React uses a native property setter internally; calling it triggers React's onChange
+      try {
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
+        if (setter && setter.set) setter.set.call(inp, true);
+      } catch (e) {}
       var lbl = inp.closest('label') || (inp.id && document.querySelector('label[for="' + inp.id + '"]'));
       try {
         if (lbl) lbl.click();
         else inp.click();
       } catch (e) {}
+      try { inp.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
       try { inp.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
       return;
     }
-    var evtOpts = { bubbles: true, cancelable: true };
+    var rect = el.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var evtOpts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+    // Pointer events (modern frameworks may use these instead of mouse events)
+    try { el.dispatchEvent(new PointerEvent('pointerdown', evtOpts)); } catch (e) {}
+    try { el.dispatchEvent(new PointerEvent('pointerup', evtOpts)); } catch (e) {}
+    // Mouse events
     try { el.dispatchEvent(new MouseEvent('mousedown', evtOpts)); } catch (e) {}
     try { el.dispatchEvent(new MouseEvent('mouseup', evtOpts)); } catch (e) {}
-    try { el.click(); } catch (e) {}
+    // Click with coordinates
+    try { el.dispatchEvent(new MouseEvent('click', evtOpts)); } catch (e) {}
   }
 
-  function clickAgreement() {
+  function clickAgreement(onDone) {
     L('action: agreement');
     var input = document.querySelector('input[type="checkbox"]');
     if (input) {
+      // Use native setter for React compatibility
+      try {
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
+        if (setter && setter.set) setter.set.call(input, true);
+      } catch (e) {}
       var label = input.closest('label');
       try {
         if (label) label.click();
-        else if (!input.checked) input.click();
+        else input.click();
       } catch (e) { L('agreement click failed: ' + e); }
+      try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
       try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
     }
-    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 50);
+    setTimeout(function () {
+      var b = findAdvanceButton();
+      if (b) b.click();
+      setTimeout(onDone, 500);   // wait 500ms for page transition
+    }, 100);
   }
 
   // Stagger option-group clicks 150 ms apart so the framework (React/Vue)
@@ -532,7 +559,7 @@
     doGroup(0);
   }
 
-  function clickCheckboxGroups() {
+  function clickCheckboxGroups(onDone) {
     var groups = getCheckboxGroups();
     L('action: checkbox_groups, ' + groups.length + ' groups');
     groups.forEach(function (cbs) {
@@ -547,17 +574,39 @@
         try { cb.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
       });
     });
-    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 50);
+    setTimeout(function () {
+      var b = findAdvanceButton();
+      if (b) b.click();
+      setTimeout(onDone, 300);
+    }, 100);
   }
 
   // ─── Fallback (pure setTimeout, no async) ──────────────────────────────
 
   function hasUnansweredError() {
-    // Exclude our own log panel from the check
-    var body = document.body.cloneNode(true);
-    var log = body.querySelector('#zmd-log');
-    if (log) log.remove();
-    return (body.textContent || '').indexOf('您尚未答完此题') !== -1;
+    var target = '您尚未答完此题';
+    var all = document.body.getElementsByTagName('*');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (isOwnUI(el)) continue;
+      // Only match elements with the text directly in a text node child
+      var hasDirectText = false;
+      for (var j = 0; j < el.childNodes.length; j++) {
+        if (el.childNodes[j].nodeType === 3 && el.childNodes[j].textContent.indexOf(target) !== -1) {
+          hasDirectText = true;
+          break;
+        }
+      }
+      if (!hasDirectText) continue;
+      // Must be actually visible (not a hidden validation hint)
+      if (el.offsetWidth === 0 && el.offsetHeight === 0) continue;
+      try {
+        var st = window.getComputedStyle(el);
+        if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0') continue;
+      } catch (e) {}
+      return true;
+    }
+    return false;
   }
 
   function handleFallback(attempt, maxRetries, done) {
@@ -664,9 +713,13 @@
       }
       L('\u2192 ' + pageType);
 
-      if (pageType === 'agreement') clickAgreement();
-      else if (pageType === 'checkbox_groups') clickCheckboxGroups();
-      else if (pageType === 'option_groups') {
+      if (pageType === 'agreement') {
+        clickAgreement(afterAction);
+        return;
+      } else if (pageType === 'checkbox_groups') {
+        clickCheckboxGroups(afterAction);
+        return;
+      } else if (pageType === 'option_groups') {
         // clickOptionGroups is async (staggered); it calls afterAction when done.
         clickOptionGroups(afterAction);
         return; // skip the synchronous afterAction schedule below
