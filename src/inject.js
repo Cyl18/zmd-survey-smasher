@@ -367,30 +367,38 @@
 
   // ─── Inline answer actions (no server round-trip needed) ─────────────────
 
-  // Return true if el looks like it is already in a selected/active state.
-  function isOptionSelected(el) {
-    if (el.getAttribute('aria-selected') === 'true') return true;
-    if (el.getAttribute('aria-pressed') === 'true') return true;
-    if (el.getAttribute('aria-checked') === 'true') return true;
-    // Detect framework selection state via descendant className or leaf text.
-    // Handles cases like <div class="selected-border"> or <div>Selected Border</div>
-    // where the CSS class name leaks into textContent (e.g. "1Selected Border").
-    var allEls = el.querySelectorAll('*');
-    for (var i = 0; i < allEls.length; i++) {
-      var child = allEls[i];
-      // className check — "selected"/"checked" but NOT "unselected"/"unchecked"
-      var cls = (typeof child.className === 'string' ? child.className : '').toLowerCase();
-      if (cls && cls.indexOf('selected') !== -1 && cls.indexOf('unselected') === -1) return true;
-      if (cls && cls.indexOf('checked') !== -1 && cls.indexOf('unchecked') === -1) return true;
-      // Leaf text check — only on elements with no child elements (text nodes only)
+  // Returns a human-readable reason string if el appears selected, else null.
+  // Used both for the skip decision and for diagnostic logging.
+  function _selReason(el) {
+    if (el.getAttribute('aria-selected') === 'true') return 'aria-selected';
+    if (el.getAttribute('aria-pressed') === 'true') return 'aria-pressed';
+    if (el.getAttribute('aria-checked') === 'true') return 'aria-checked';
+    var all = el.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var child = all[i];
+      var cls = (typeof child.className === 'string' ? child.className : '');
+      if (cls) {
+        // Word-boundary regex so "selectable"/"selector" don't fire; also require
+        // the element to have non-zero dimensions (hidden state-indicators have none).
+        var visible = child.offsetWidth > 0 || child.offsetHeight > 0;
+        if (visible && /\bselected\b/i.test(cls) && !/\bunselected\b/i.test(cls))
+          return 'cls:' + cls.slice(0, 40);
+        if (visible && /\bchecked\b/i.test(cls) && !/\bunchecked\b/i.test(cls))
+          return 'cls:' + cls.slice(0, 40);
+      }
+      // Leaf text check — only leaf nodes; indexOf so "1Selected Border" matches.
       if (!child.children.length) {
         var t = child.textContent.trim().toLowerCase();
-        if (t && t.length < 25 && t.indexOf('selected') !== -1 && t.indexOf('unselected') === -1) return true;
-        if (t && t.length < 25 && t.indexOf('checked') !== -1 && t.indexOf('unchecked') === -1) return true;
+        if (t && t.length < 25 && t.indexOf('selected') !== -1 && t.indexOf('unselected') === -1)
+          return 'txt:' + t;
+        if (t && t.length < 25 && t.indexOf('checked') !== -1 && t.indexOf('unchecked') === -1)
+          return 'txt:' + t;
       }
     }
-    return false;
+    return null;
   }
+
+  function isOptionSelected(el) { return !!_selReason(el); }
 
   // Smart click: if el contains a radio/checkbox (or IS one), click that input
   // (via its label when possible) and fire a change event.  Falls back to a
@@ -436,10 +444,33 @@
 
     function doGroup(i) {
       if (i >= groups.length) {
-        // All groups handled — wait for framework to settle, then click advance
+        // ── Pre-advance diagnostic: confirm every group has a selection ──
+        var unconfirmed = [];
+        groups.forEach(function (g, gi) {
+          var reason = null;
+          for (var k = 0; k < g.length; k++) {
+            reason = _selReason(g[k]);
+            if (reason) break;
+          }
+          if (reason) {
+            L('  grp[' + gi + '] confirmed via ' + reason);
+          } else {
+            L('  grp[' + gi + '] ⚠ NONE selected');
+            unconfirmed.push(gi);
+          }
+        });
+
+        // Wait for framework to settle, then click advance
         setTimeout(function () {
           var b = findAdvanceButton();
-          if (b) b.click();
+          if (!b) {
+            L('⚠ advance button not found');
+          } else if (b.disabled || b.getAttribute('aria-disabled') === 'true') {
+            L('⚠ advance button DISABLED (unconfirmed grps: [' + unconfirmed.join(',') + '])');
+          } else {
+            L('  advance: clicking' + (unconfirmed.length ? ' (⚠ unconfirmed: [' + unconfirmed.join(',') + '])' : ''));
+            b.click();
+          }
           setTimeout(onDone, 300);
         }, 200);
         return;
@@ -448,11 +479,14 @@
       // Skip this group if any option is already selected — re-clicking would
       // toggle it off (deselect), causing "您尚未答完此题" endlessly.
       var selIdx = -1;
+      var selReason = null;
       for (var j = 0; j < els.length; j++) {
-        if (isOptionSelected(els[j])) { selIdx = j; break; }
+        var r = _selReason(els[j]);
+        if (r) { selIdx = j; selReason = r; break; }
       }
       if (selIdx !== -1) {
-        L('  skip [' + selIdx + '/' + els.length + ']: ' + els[selIdx].textContent.trim().slice(0, 30));
+        L('  skip [' + selIdx + '/' + els.length + ']: '
+          + els[selIdx].textContent.trim().slice(0, 20) + ' via ' + selReason);
       } else {
         var idx = Math.max(0, els.length - 2);
         L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
