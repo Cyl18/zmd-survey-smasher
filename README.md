@@ -1,5 +1,7 @@
 # zmd-survey-smasher
 
+> 99% 由 Calude 编写
+
 自动填写终末地问卷的工具。通过 mitmproxy 拦截 `survey.hypergryph.com` 的 HTML 响应并注入 JS，由本地 WebSocket 服务器提供答题逻辑，实现问卷全自动填写与提交。
 
 ---
