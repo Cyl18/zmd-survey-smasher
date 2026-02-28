@@ -11,7 +11,8 @@ import signal
 # Ensure src/ is on the path when run directly
 sys.path.insert(0, os.path.dirname(__file__))
 
-from PyQt6.QtCore import pyqtSignal, Qt, QThread
+from PyQt6.QtCore import pyqtSignal, Qt, QThread, QUrl
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
     QGroupBox,
@@ -106,11 +107,17 @@ class MainWindow(QMainWindow):
         self._cache_btn = QPushButton("清除游戏缓存")
         self._cache_btn.setToolTip("清除 %LOCALAPPDATA%\\PlatformProcess 下的浏览器缓存")
         self._cache_btn.clicked.connect(self._on_clear_cache)
+        self._github_btn = QPushButton("GitHub")
+        self._github_btn.setToolTip("https://github.com/Cyl18/zmd-survey-smasher")
+        self._github_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://github.com/Cyl18/zmd-survey-smasher"))
+        )
         btn_row.addWidget(self._start_btn)
         btn_row.addWidget(self._stop_btn)
         btn_row.addWidget(self._cert_btn)
         btn_row.addWidget(self._cache_btn)
         btn_row.addStretch()
+        btn_row.addWidget(self._github_btn)
         layout.addLayout(btn_row)
 
         # Log area
