@@ -292,7 +292,17 @@
       });
       // Need at least 3 option-like divs and they should be the majority
       if (optionDivs.length >= 3 && optionDivs.length >= kids.length * 0.5) {
-        containers.push(optionDivs);
+        // Skip containers that include error/status text — these are
+        // summary/validation containers, not real option groups.
+        var hasStatusText = false;
+        for (var si = 0; si < optionDivs.length; si++) {
+          var st = optionDivs[si].textContent.trim();
+          if (st.indexOf('您尚未答完此题') !== -1 || st.indexOf('请同意以上内容后继续') !== -1) {
+            hasStatusText = true;
+            break;
+          }
+        }
+        if (!hasStatusText) containers.push(optionDivs);
       }
     }
     return containers;
@@ -760,19 +770,41 @@
     setTimeout(afterAction, 100);
 
     function afterAction() {
-      // If the page already changed since we started, the advance worked —
-      // skip fallback and let processPage handle the new page.
+      // If the page already changed since we started, the advance worked.
       if (pageKey() !== startKey) {
         processing = false;
         processPage();
         return;
       }
+      // If an error appeared immediately, fallback without waiting.
       if (hasUnansweredError()) {
         handleFallback(0, 10, function () { processing = false; processPage(); });
-      } else {
-        processing = false;
-        processPage();
+        return;
       }
+      // No error yet, but page hasn't changed — poll for transition.
+      // Page transitions can take 500–800 ms (animation), so check a few
+      // times before giving up.
+      var polls = 0;
+      function poll() {
+        if (pageKey() !== startKey) {
+          processing = false;
+          processPage();
+          return;
+        }
+        polls++;
+        if (polls < 4) {
+          setTimeout(poll, 250);
+          return;
+        }
+        // Polling exhausted — check for late error.
+        if (hasUnansweredError()) {
+          handleFallback(0, 10, function () { processing = false; processPage(); });
+        } else {
+          // Page didn't change and no error — wait for MutationObserver.
+          processing = false;
+        }
+      }
+      setTimeout(poll, 250);
     }
   }
 
