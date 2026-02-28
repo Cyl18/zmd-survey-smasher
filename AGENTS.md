@@ -33,9 +33,10 @@ via the "清除游戏缓存" button (cache_cleaner.py).
 ## Page Types Detected
 1. **Agreement** — checkbox with "我已阅读，并同意以上内容"
 2. **Button groups** — buttons grouped by parentElement, ≥2 per group
-3. **Div option containers (strict)** — container div with 3–10 child divs each having ≥2 children
-4. **Div option containers (relaxed)** — container div with 3+ child divs that have text but no buttons/inputs (≥50% of children); handles deeply nested single-child chains
-5. **Checkbox groups** — non-agreement checkboxes grouped by nearest shared ancestor with ≥2 checkboxes
+3. **Div option containers (strict)** — container div with 3–10 child divs each having ≥2 children (icon+text pattern; radio/checkbox inside is handled by `clickEl`)
+4. **Div option containers (relaxed)** — container div with 3+ child divs that have text but no buttons/text-inputs (≥50% of children); radio/checkbox inputs are allowed and handled by `clickEl`
+5. **Radio groups** — `input[type="radio"]` elements grouped by `name` attribute; last resort when no div/button groups detected
+6. **Checkbox groups** — non-agreement checkboxes grouped by nearest shared ancestor with ≥2 checkboxes
 
 ## Critical inject.js Design Notes
 - **pageKey() must exclude own UI**: `#zmd-log` and `#zmd-badge` are excluded from the page fingerprint. Otherwise logging changes innerText length → changes pageKey → triggers MutationObserver → infinite loop.
@@ -43,6 +44,8 @@ via the "清除游戏缓存" button (cache_cleaner.py).
 - **Unknown page → fallback**: When page type is unrecognized but interactive elements exist, the script enters the fallback path (random clicking) instead of looping forever.
 - **No scheduleRecheck()**: Removed the periodic recheck timer. Page changes are detected solely via MutationObserver to avoid CPU spinning.
 - **hasUnansweredError() clones body**: Excludes `#zmd-log` from the text check to avoid false positives from logged error messages.
+- **clickEl() for robust option clicking**: All option-group clicks go through `clickEl(el)`. If the element (or any descendant) is a radio/checkbox input, it clicks the input (or its `<label>`) and fires a `change` event. Also resolves `<label for="...">` by id. Falls back to `el.click()` for plain button-style elements.
+- **Radio inputs allowed in relaxed div check**: The relaxed `getDivOptionContainers` filter uses `input:not([type="radio"]):not([type="checkbox"])` so option divs that wrap radio/checkbox inputs are not excluded.
 
 ## Windows-only
 - System proxy set via `winreg` (HKCU Internet Settings)

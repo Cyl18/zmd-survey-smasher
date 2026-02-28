@@ -170,13 +170,14 @@
       });
       if (allStructured) { containers.push(kids); continue; }
 
-      // Relaxed check: most children are divs with text, no buttons/inputs.
+      // Relaxed check: most children are divs with text, no buttons/text-inputs.
+      // Allows radio/checkbox inputs (they are the option selectors).
       // Filters out the button container and empty divs.
       var optionDivs = kids.filter(function (k) {
         if (k.tagName !== 'DIV') return false;
         if (isOwnUI(k)) return false;
         if (k.querySelector('button')) return false;
-        if (k.querySelector('input')) return false;
+        if (k.querySelector('input:not([type="radio"]):not([type="checkbox"])')) return false;
         var text = k.textContent.trim();
         return text.length > 0 && text.length < 500;
       });
@@ -221,11 +222,32 @@
     return groups;
   }
 
+  // Find radio button groups by name attribute (or shared ancestor as fallback).
+  function getRadioGroups() {
+    var allRadios = Array.from(document.querySelectorAll('input[type="radio"]')).filter(function (r) {
+      return !isOwnUI(r);
+    });
+    if (allRadios.length < 2) return [];
+    var map = new Map();
+    allRadios.forEach(function (r) {
+      var key = r.name || '__noname__';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    });
+    var groups = [];
+    map.forEach(function (radios) {
+      if (radios.length >= 2) groups.push(radios);
+    });
+    return groups;
+  }
+
   function getOptionGroups() {
     var btnGroups = getButtonGroups();
     if (btnGroups.length > 0) return btnGroups;
     var divGroups = getDivOptionContainers();
     if (divGroups.length > 0) return divGroups;
+    var radioGroups = getRadioGroups();
+    if (radioGroups.length > 0) return radioGroups;
     return [];
   }
 
@@ -237,6 +259,23 @@
   }
 
   // ─── Inline answer actions (no server round-trip needed) ─────────────────
+
+  // Smart click: if el contains a radio/checkbox (or IS one), click that input
+  // (via its label when possible) and fire a change event.  Falls back to a
+  // plain el.click() for button-style elements.
+  function clickEl(el) {
+    var inp = (el.tagName === 'INPUT') ? el : el.querySelector('input[type="radio"], input[type="checkbox"]');
+    if (inp) {
+      var lbl = inp.closest('label') || (inp.id && document.querySelector('label[for="' + inp.id + '"]'));
+      try {
+        if (lbl) lbl.click();
+        else inp.click();
+      } catch (e) {}
+      try { inp.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      return;
+    }
+    try { el.click(); } catch (e) {}
+  }
 
   function clickAgreement() {
     L('action: agreement');
@@ -258,7 +297,7 @@
     groups.forEach(function (els) {
       var idx = Math.max(0, els.length - 2);
       L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
-      els[idx].click();
+      clickEl(els[idx]);
     });
     setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
   }
@@ -305,7 +344,7 @@
       groups.forEach(function (els) {
         var n = 1 + Math.floor(Math.random() * Math.min(3, els.length));
         els.slice().sort(function () { return Math.random() - 0.5; }).slice(0, n)
-          .forEach(function (e) { e.click(); });
+          .forEach(function (e) { clickEl(e); });
       });
     }
     if (cbGroups.length > 0) {
@@ -369,15 +408,17 @@
     try {
       var nBtn = document.querySelectorAll('button').length;
       var nCb = document.querySelectorAll('input[type="checkbox"]').length;
+      var nRd = document.querySelectorAll('input[type="radio"]').length;
       var nBg = getButtonGroups().length;
       var nDg = getDivOptionContainers().length;
+      var nRg = getRadioGroups().length;
       var nCg = getCheckboxGroups().length;
-      L('page: ' + nBtn + ' btns, ' + nCb + ' cb, ' + nBg + ' btnGrp, ' + nDg + ' divGrp, ' + nCg + ' cbGrp');
+      L('page: ' + nBtn + ' btns, ' + nCb + ' cb, ' + nRd + ' radio, ' + nBg + ' btnGrp, ' + nDg + ' divGrp, ' + nRg + ' radioGrp, ' + nCg + ' cbGrp');
 
       var pageType = detectPageType();
       if (!pageType) {
         // Unknown page — try fallback if there are any interactive elements
-        var hasInteractive = nBtn > 0 || nCb > 0;
+        var hasInteractive = nBtn > 0 || nCb > 0 || nRd > 0;
         if (hasInteractive) {
           L('\u26a0 unknown page type \u2014 trying fallback');
           handleFallback(0, 10, function () { processing = false; });
