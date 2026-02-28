@@ -72,7 +72,7 @@ uv run src/main.py
 
 ### 方式二：使用打包好的 exe
 
-从 Releases 页面下载 `zmd-survey-smasher.exe`，直接运行，**不需要**安装 Python。
+从 Releases 页面下载 `zmd-survey-smasher.7z`，解压后直接运行 `.exe`，**不需要**安装 Python。
 
 ---
 
