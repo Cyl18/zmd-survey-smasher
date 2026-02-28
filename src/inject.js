@@ -418,6 +418,11 @@
     // Native checked state on radio/checkbox (either the element itself or a child input)
     var inp = (el.tagName === 'INPUT') ? el : el.querySelector('input[type="radio"], input[type="checkbox"]');
     if (inp && inp.checked) return 'input:checked';
+    // If there IS a radio/checkbox input but it's unchecked, trust the native
+    // state over CSS class heuristics.  Tailwind-style classes (e.g.
+    // "text-option-radio-selected") can contain "selected" as a styling token
+    // without meaning the option is actually chosen.
+    if (inp) return null;
     if (el.getAttribute('aria-selected') === 'true') return 'aria-selected';
     if (el.getAttribute('aria-pressed') === 'true') return 'aria-pressed';
     if (el.getAttribute('aria-checked') === 'true') return 'aria-checked';
