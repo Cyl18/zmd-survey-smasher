@@ -302,7 +302,18 @@
             break;
           }
         }
-        if (!hasStatusText) containers.push(optionDivs);
+        if (hasStatusText) continue;
+        // Skip containers with radio/checkbox inputs — dedicated
+        // getRadioGroups / getCheckboxGroups handle these more reliably
+        // (e.g. checkbox pages need multi-select, not single-click).
+        var hasFormInputs = false;
+        for (var fi = 0; fi < optionDivs.length; fi++) {
+          if (optionDivs[fi].querySelector('input[type="radio"], input[type="checkbox"]')) {
+            hasFormInputs = true;
+            break;
+          }
+        }
+        if (!hasFormInputs) containers.push(optionDivs);
       }
     }
     return containers;
@@ -372,12 +383,11 @@
       return grp.every(function (el) { return el.tagName !== 'BUTTON'; });
     });
 
-    var combined = btnGroups.concat(divOnly);
-    if (combined.length > 0) return combined;
-
+    // Always include radio groups — they may coexist with button/div groups
+    // on multi-question pages.  Fix 1 ensures divGrps no longer contain
+    // radio inputs, so there's no duplication risk.
     var radioGroups = getRadioGroups();
-    if (radioGroups.length > 0) return radioGroups;
-    return [];
+    return btnGroups.concat(divOnly).concat(radioGroups);
   }
 
   function detectPageType() {
@@ -479,15 +489,18 @@
           } catch (e) {}
         }
       } else {
-        // Radio: native setter + click is safe (clicking a selected radio is a no-op)
-        try {
-          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
-          if (setter && setter.set) setter.set.call(inp, true);
-        } catch (e) {}
+        // Radio: click first to trigger framework change handlers.
+        // Native setter as fallback if click didn't select it.
         try {
           if (lbl) lbl.click();
           else inp.click();
         } catch (e) {}
+        if (!inp.checked) {
+          try {
+            var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
+            if (setter && setter.set) setter.set.call(inp, true);
+          } catch (e) {}
+        }
       }
       try { inp.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
       try { inp.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
@@ -786,30 +799,20 @@
         handleFallback(0, 10, function () { processing = false; processPage(); });
         return;
       }
-      // No error yet, but page hasn't changed — poll for transition.
-      // Page transitions can take 500–800 ms (animation), so check a few
-      // times before giving up.
-      var polls = 0;
-      function poll() {
+      // Quick recheck — page transitions are local / near-instant.
+      setTimeout(function () {
         if (pageKey() !== startKey) {
           processing = false;
           processPage();
           return;
         }
-        polls++;
-        if (polls < 4) {
-          setTimeout(poll, 250);
-          return;
-        }
-        // Polling exhausted — check for late error.
         if (hasUnansweredError()) {
           handleFallback(0, 10, function () { processing = false; processPage(); });
         } else {
-          // Page didn't change and no error — wait for MutationObserver.
+          L('\u26a0 advance did not change page \u2014 waiting');
           processing = false;
         }
-      }
-      setTimeout(poll, 250);
+      }, 200);
     }
   }
 
