@@ -471,7 +471,7 @@
             L('  advance: clicking' + (unconfirmed.length ? ' (⚠ unconfirmed: [' + unconfirmed.join(',') + '])' : ''));
             b.click();
           }
-          setTimeout(onDone, 800);
+          setTimeout(onDone, 300);
         }, 200);
         return;
       }
@@ -661,7 +661,7 @@
     if (dominated) return;
 
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(function () { processPage(); }, 400);
+    debounceTimer = setTimeout(function () { processPage(); }, 300);
   }
 
   // ─── Dialog dismissal ─────────────────────────────────────────────────────
