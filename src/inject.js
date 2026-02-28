@@ -372,12 +372,20 @@
     if (el.getAttribute('aria-selected') === 'true') return true;
     if (el.getAttribute('aria-pressed') === 'true') return true;
     if (el.getAttribute('aria-checked') === 'true') return true;
+    // Detect state-indicator descendants like <div>Selected</div> whose text
+    // leaks from a CSS class name (e.g. "3Selected Border" yields child text "Selected").
+    var allEls = el.querySelectorAll('*');
+    for (var i = 0; i < allEls.length; i++) {
+      var t = allEls[i].textContent.trim().toLowerCase();
+      if (t === 'selected' || t === 'checked') return true;
+    }
     return false;
   }
 
   // Smart click: if el contains a radio/checkbox (or IS one), click that input
   // (via its label when possible) and fire a change event.  Falls back to a
-  // plain el.click() for button-style elements.
+  // synthetic mousedown+mouseup+click for button/div elements — needed for
+  // React/Vue onMouseDown handlers that plain el.click() won't trigger.
   function clickEl(el) {
     var inp = (el.tagName === 'INPUT') ? el : el.querySelector('input[type="radio"], input[type="checkbox"]');
     if (inp) {
@@ -389,6 +397,9 @@
       try { inp.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
       return;
     }
+    var evtOpts = { bubbles: true, cancelable: true };
+    try { el.dispatchEvent(new MouseEvent('mousedown', evtOpts)); } catch (e) {}
+    try { el.dispatchEvent(new MouseEvent('mouseup', evtOpts)); } catch (e) {}
     try { el.click(); } catch (e) {}
   }
 
