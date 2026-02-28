@@ -27,8 +27,9 @@ _NO_CACHE_HEADERS = {
 
 
 class SurveyAddon:
-    def __init__(self, debug_no_submit: bool = False, log_callback=None) -> None:
+    def __init__(self, debug_no_submit: bool = False, ws_port: int = 0, log_callback=None) -> None:
         self.debug_no_submit = debug_no_submit
+        self.ws_port = ws_port
         self._log_callback = log_callback
 
         with open(_JS_PATH, "r", encoding="utf-8") as f:
@@ -43,6 +44,7 @@ class SurveyAddon:
         """Return a <script>…</script> block with the full JS inlined."""
         js = self._js_template
         js = js.replace("{{DEBUG_NO_SUBMIT}}", "true" if self.debug_no_submit else "false")
+        js = js.replace("{{WS_PORT}}", str(self.ws_port))
         # Escape </script> inside JS so it doesn't prematurely close the tag
         js = js.replace("</script>", "<\\/script>")
         return (b"<script>" + js.encode("utf-8") + b"</script>")

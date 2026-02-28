@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from cache_cleaner import clear_game_cache
+from cache_cleaner import clear_game_cache, get_cache_dir
 from cert_installer import install_ca_cert
 from proxy_manager import ProxyManager, clear_system_proxy, set_system_proxy
 
@@ -66,11 +66,11 @@ class MainWindow(QMainWindow):
 
         # Usage tutorial
         tutorial = QLabel(
-            "<b>使用教程：</b><br>"
-            "1. <b>（首次使用）点击“安装 CA 证书”</b><br>"
-            "2. <b>点击“启动”</b><br>"
-            "3. <b>打开终末地客户端，正常填写问卷</b><br>"
-            "<span style='color:#b45309'>⚠ 若问卷已在游戏中打开，请刷新/重新进入页面（代理启动前的连接不经过拦截）</span>"
+            “<b>使用教程：</b><br>”
+            “1. <b>（首次使用）点击”安装 CA 证书”</b><br>”
+            “2. <b>关闭游戏，点击”启动”</b>（自动清理游戏缓存；若清理失败日志会提示）<br>”
+            “3. <b>打开终末地客户端，正常填写问卷</b><br>”
+            “<span style='color:#b45309'>⚠ 若问卷已在游戏中打开，请刷新/重新进入页面（代理启动前的连接不经过拦截）</span>”
         )
         tutorial.setWordWrap(True)
         tutorial.setStyleSheet("color:#444; background:#f6f6f6; border-radius:6px; padding:8px; margin-bottom:6px;")
@@ -138,10 +138,21 @@ class MainWindow(QMainWindow):
         port_val = self._proxy_port_spin.value()
         debug_no_submit = self._debug_checkbox.isChecked()
 
-        self._append_log("正在启动…")
         self._start_btn.setEnabled(False)
         self._debug_checkbox.setEnabled(False)
         self._proxy_port_spin.setEnabled(False)
+
+        # ── Auto-clear game cache ──────────────────────────────────────────
+        if get_cache_dir() is not None:
+            self._append_log("正在清理游戏缓存…")
+            cache_ok, cache_msg = clear_game_cache()
+            if cache_ok:
+                self._append_log(f"✓ {cache_msg}")
+            else:
+                self._append_log(f"⚠ 缓存清理失败：{cache_msg}")
+                self._append_log("⚠ 请先关闭游戏再点击启动，否则游戏可能加载旧版注入脚本缓存")
+
+        self._append_log("正在启动…")
 
         try:
             # 自动分配端口

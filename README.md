@@ -80,11 +80,13 @@ uv run src/main.py
    点击"安装 CA 证书"按钮，弹窗确认后证书自动写入 Windows 用户证书存储。  
    > 原理：mitmproxy 需要用自签名 CA 对 HTTPS 流量进行中间人解密。
 
-2. **启动代理**  
-   点击"▶ 启动"，程序将：  
-   - 随机分配 WS 端口并启动答题服务器  
-   - 在指定端口（默认自动分配）启动 mitmproxy  
-   - 将 Windows 系统代理设置为 `127.0.0.1:<proxy_port>`  
+2. **关闭游戏，点击"▶ 启动"**
+   程序将：
+   - **自动清理游戏浏览器缓存**（`%LOCALAPPDATA%\PlatformProcess\*`）
+     若清理失败，日志会显示 `⚠ 缓存清理失败`，说明游戏仍在运行并锁定缓存文件——请先完全关闭游戏后再点击启动。
+   - 随机分配 WS 端口并启动答题服务器
+   - 在指定端口（默认自动分配）启动 mitmproxy
+   - 将 Windows 系统代理设置为 `127.0.0.1:<proxy_port>`
    - 日志栏显示 `WS server on :<port>` 和 `Proxy on :<port>`
 
 3. **打开游戏，正常进入问卷**  
@@ -128,12 +130,9 @@ zmd-survey-smasher/
     ├── strategy.py          # AnswerStrategy（规则式；可替换为 LLM 子类）
     ├── addon.py             # mitmproxy addon：HTML 拦截与 JS 注入
     ├── cert_installer.py    # certutil CA 证书安装
+    ├── cache_cleaner.py     # 游戏浏览器缓存清理
     └── inject.js            # 注入到问卷页面的客户端脚本
 ```
-
-问题：
-1. 需要清理缓存，否则游戏会缓存：
-C:\Users\cyl18\AppData\Local\PlatformProcess\*
 
 2.无法识别div组
 [zmd] → agreement

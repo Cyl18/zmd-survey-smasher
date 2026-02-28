@@ -6,9 +6,38 @@
   'use strict';
 
   var DEBUG_NO_SUBMIT = {{DEBUG_NO_SUBMIT}};
+  var WS_PORT = {{WS_PORT}};
   var ADVANCE_TEXTS = DEBUG_NO_SUBMIT ? ['下一页'] : ['下一页', '提交'];
   var SKIP_BUTTON_TEXTS = ['下一页', '提交', '上一页'];
   var dialogDismissed = false;
+
+  // ─── Local WebSocket (debug / log forwarding) ─────────────────────────────
+
+  var _ws = null;
+  var _wsQueue = [];
+
+  function _sendWS(obj) {
+    if (!WS_PORT) return;
+    var msg = JSON.stringify(obj);
+    if (_ws && _ws.readyState === 1) { try { _ws.send(msg); } catch(e) {} return; }
+    _wsQueue.push(msg);
+    if (_wsQueue.length > 200) _wsQueue.shift();
+  }
+
+  function _connectWS() {
+    if (!WS_PORT) return;
+    try {
+      var ws = new WebSocket('ws://127.0.0.1:' + WS_PORT);
+      ws.onopen = function () {
+        _ws = ws;
+        var q = _wsQueue.splice(0);
+        q.forEach(function (m) { try { ws.send(m); } catch(e) {} });
+      };
+      ws.onclose = function () { if (_ws === ws) _ws = null; setTimeout(_connectWS, 3000); };
+      ws.onerror = function () {};
+    } catch(e) { setTimeout(_connectWS, 5000); }
+  }
+  if (WS_PORT) setTimeout(_connectWS, 500);
 
   // ─── On-page log panel (created synchronously, same as badge) ──────────
 
@@ -78,6 +107,7 @@
       _logEl.textContent += msg + '\n';
       _logEl.scrollTop = 1e9;
     } catch(e) {}
+    _sendWS({ type: 'log', message: msg });
   }
 
   // Create UI immediately (synchronous — no async dependency)
@@ -107,7 +137,15 @@
 
   function findAdvanceButton() {
     return Array.from(document.querySelectorAll('button'))
-      .find(function (b) { return ADVANCE_TEXTS.indexOf(b.textContent.trim()) !== -1; });
+      .find(function (b) {
+        var text = b.textContent.trim();
+        return ADVANCE_TEXTS.some(function (t) { return text.indexOf(t) !== -1; });
+      });
+  }
+
+  // Check whether a navigation-text fragment appears in a button's text.
+  function isNavText(text) {
+    return SKIP_BUTTON_TEXTS.some(function (t) { return text.indexOf(t) !== -1; });
   }
 
   function detectAgreement() {
@@ -140,9 +178,9 @@
     var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
       if (isOwnUI(b)) return false;
       var text = b.textContent.trim();
-      // Only exclude buttons whose text is explicitly a navigation label.
+      // Exclude buttons whose text contains a navigation label (indexOf, not exact).
       // Buttons with no text (icon/image buttons) are kept.
-      if (text && SKIP_BUTTON_TEXTS.indexOf(text) !== -1) return false;
+      if (text && isNavText(text)) return false;
       return true;
     });
     var map = new Map();
@@ -294,7 +332,38 @@
     return null;
   }
 
+  // ─── Debug report (sent to WS server for analysis) ───────────────────────
+
+  function _sendDebug(pageType) {
+    if (!WS_PORT) return;
+    var btnGrps = getButtonGroups();
+    var divGrps = getDivOptionContainers();
+    var allBtns = Array.from(document.querySelectorAll('button'))
+      .filter(function (b) { return !isOwnUI(b); })
+      .map(function (b) { return b.textContent.trim().slice(0, 50); });
+    _sendWS({
+      type: 'debug',
+      url: location.href,
+      page_type: pageType || null,
+      btns: allBtns,
+      btn_groups: btnGrps.map(function (g) {
+        return g.map(function (el) { return el.textContent.trim().slice(0, 50); });
+      }),
+      div_groups: divGrps.map(function (g) {
+        return g.map(function (el) { return el.textContent.trim().slice(0, 50); });
+      }),
+    });
+  }
+
   // ─── Inline answer actions (no server round-trip needed) ─────────────────
+
+  // Return true if el looks like it is already in a selected/active state.
+  function isOptionSelected(el) {
+    if (el.getAttribute('aria-selected') === 'true') return true;
+    if (el.getAttribute('aria-pressed') === 'true') return true;
+    if (el.getAttribute('aria-checked') === 'true') return true;
+    return false;
+  }
 
   // Smart click: if el contains a radio/checkbox (or IS one), click that input
   // (via its label when possible) and fire a change event.  Falls back to a
@@ -331,6 +400,16 @@
     var groups = getOptionGroups();
     L('action: option_groups, ' + groups.length + ' groups');
     groups.forEach(function (els) {
+      // Skip this group if any option is already selected — re-clicking would
+      // toggle it off (deselect), causing "您尚未答完此题" endlessly.
+      var selIdx = -1;
+      for (var i = 0; i < els.length; i++) {
+        if (isOptionSelected(els[i])) { selIdx = i; break; }
+      }
+      if (selIdx !== -1) {
+        L('  skip [already selected ' + selIdx + '/' + els.length + ']: ' + els[selIdx].textContent.trim().slice(0, 30));
+        return;
+      }
       var idx = Math.max(0, els.length - 2);
       L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
       clickEl(els[idx]);
@@ -397,7 +476,8 @@
     if (groups.length === 0 && cbGroups.length === 0) {
       // Last resort: click random non-navigation buttons
       var btns = Array.from(document.querySelectorAll('button')).filter(function (b) {
-        return SKIP_BUTTON_TEXTS.indexOf(b.textContent.trim()) === -1;
+        var text = b.textContent.trim();
+        return !text || !isNavText(text);
       });
       btns.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 3)
         .forEach(function (b) { b.click(); });
@@ -452,6 +532,7 @@
       L('page: ' + nBtn + ' btns, ' + nCb + ' cb, ' + nRd + ' radio, ' + nBg + ' btnGrp, ' + nDg + ' divGrp, ' + nRg + ' radioGrp, ' + nCg + ' cbGrp');
 
       var pageType = detectPageType();
+      _sendDebug(pageType);
       if (!pageType) {
         // Unknown page — try fallback if there are any interactive elements
         var hasInteractive = nBtn > 0 || nCb > 0 || nRd > 0;

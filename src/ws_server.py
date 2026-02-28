@@ -48,6 +48,20 @@ class WsServer:
                     )
                 elif msg_type == "log":
                     self._log(f"[JS] {payload.get('message', '')}")
+                elif msg_type == "debug":
+                    page_type = payload.get("page_type") or "unknown"
+                    url = payload.get("url", "")
+                    btn_groups = payload.get("btn_groups", [])
+                    div_groups = payload.get("div_groups", [])
+                    btns = payload.get("btns", [])
+                    lines = [f"[DBG] page_type={page_type!r}  {url}"]
+                    for i, g in enumerate(btn_groups):
+                        lines.append(f"[DBG]   btnGrp[{i}]: {g}")
+                    for i, g in enumerate(div_groups):
+                        lines.append(f"[DBG]   divGrp[{i}]: {g}")
+                    if not btn_groups and not div_groups:
+                        lines.append(f"[DBG]   btns: {btns}")
+                    self._log("\n".join(lines))
                 else:
                     self._log(f"[WS] unknown message type: {msg_type!r}")
         except websockets.exceptions.ConnectionClosedError:

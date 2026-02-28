@@ -13,6 +13,8 @@ from mitmproxy.options import Options
 from mitmproxy.tools.dump import DumpMaster
 
 from addon import SurveyAddon
+from strategy import AnswerStrategy
+from ws_server import WsServer
 
 logger = logging.getLogger(__name__)
 
@@ -119,10 +121,14 @@ class ProxyManager:
             loop.close()
 
     async def _async_main(self, proxy_port: int, debug_no_submit: bool) -> None:
+        ws = WsServer(AnswerStrategy(), log_callback=self._log_callback)
+        await ws.start()
+
         opts = Options(listen_host="127.0.0.1", listen_port=proxy_port)
         master = DumpMaster(opts, with_termlog=False, with_dumper=False)
         master.addons.add(SurveyAddon(
             debug_no_submit=debug_no_submit,
+            ws_port=ws.port,
             log_callback=self._log_callback,
         ))
         self._master = master
@@ -134,3 +140,5 @@ class ProxyManager:
             await master.run()
         except Exception as exc:  # noqa: BLE001
             logger.warning("mitmproxy master exited: %s", exc)
+        finally:
+            await ws.stop()
