@@ -69,7 +69,8 @@ class MainWindow(QMainWindow):
             "<b>使用教程：</b><br>"
             "1. <b>（首次使用）点击”安装 CA 证书”</b><br>"
             "2. <b>**关闭游戏**，点击下方的”启动”</b><br>"
-            "3. <b>打开终末地问卷</b>"
+            "3. <b>打开终末地问卷</b><br/>"
+            "清理游戏缓存：针对没有被注入的问题"
         )
         tutorial.setWordWrap(True)
         tutorial.setStyleSheet("color:#444; background:#f6f6f6; border-radius:6px; padding:8px; margin-bottom:6px;")
