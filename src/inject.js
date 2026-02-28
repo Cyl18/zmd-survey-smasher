@@ -304,16 +304,11 @@
         }
         if (hasStatusText) continue;
         // Skip containers with radio/checkbox inputs — dedicated
-        // getRadioGroups / getCheckboxGroups handle these more reliably
-        // (e.g. checkbox pages need multi-select, not single-click).
-        var hasFormInputs = false;
-        for (var fi = 0; fi < optionDivs.length; fi++) {
-          if (optionDivs[fi].querySelector('input[type="radio"], input[type="checkbox"]')) {
-            hasFormInputs = true;
-            break;
-          }
-        }
-        if (!hasFormInputs) containers.push(optionDivs);
+        // getRadioGroups / getCheckboxGroups handle these more reliably.
+        // Check the container element directly to catch inputs that are
+        // siblings of the text divs (not nested inside them).
+        if (el.querySelector('input[type="radio"], input[type="checkbox"]')) continue;
+        containers.push(optionDivs);
       }
     }
     return containers;
@@ -847,14 +842,32 @@
   function bootstrap() {
     L('bootstrap: waiting 300ms...');
     setTimeout(function () {
-      var dObs = new MutationObserver(function () { if (!dialogDismissed) dismissResumeDialog(); });
+      var _started = false;
+      function tryStart() {
+        if (_started) return;
+        _started = true;
+        startProcessing();
+      }
+      // Debounced observer — avoids spamming dismissResumeDialog on every DOM mutation.
+      var _dObsTimer = null;
+      var dObs = new MutationObserver(function () {
+        if (dialogDismissed) return;
+        if (_dObsTimer) clearTimeout(_dObsTimer);
+        _dObsTimer = setTimeout(function () {
+          if (dismissResumeDialog()) setTimeout(tryStart, 300);
+        }, 200);
+      });
       dObs.observe(document.body, { childList: true, subtree: true });
 
       if (dismissResumeDialog()) {
         L('dialog dismissed, waiting 300ms...');
-        setTimeout(function () { startProcessing(); }, 300);
+        setTimeout(tryStart, 300);
+      } else if (document.body.textContent.indexOf('您之前已经回答了部分题目，是否继续上次回答') !== -1) {
+        // Dialog text visible but buttons not rendered yet — dObs will dismiss it
+        // when they appear. Do NOT start processing while dialog is showing.
+        L('\u26a0 dialog detected \u2014 waiting for buttons\u2026');
       } else {
-        startProcessing();
+        tryStart();
       }
     }, 300);
   }
