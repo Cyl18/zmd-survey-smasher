@@ -66,11 +66,11 @@ class MainWindow(QMainWindow):
 
         # Usage tutorial
         tutorial = QLabel(
-            “<b>使用教程：</b><br>”
-            “1. <b>（首次使用）点击”安装 CA 证书”</b><br>”
-            “2. <b>关闭游戏，点击”启动”</b>（自动清理游戏缓存；若清理失败日志会提示）<br>”
-            “3. <b>打开终末地客户端，正常填写问卷</b><br>”
-            “<span style='color:#b45309'>⚠ 若问卷已在游戏中打开，请刷新/重新进入页面（代理启动前的连接不经过拦截）</span>”
+            "<b>使用教程：</b><br>"
+            "1. <b>（首次使用）点击”安装 CA 证书”</b><br>"
+            "2. <b>关闭游戏，点击”启动”</b>（自动清理游戏缓存；若清理失败日志会提示）<br>"
+            "3. <b>打开终末地客户端，正常填写问卷</b><br>"
+            "<span style='color:#b45309'>⚠ 若问卷已在游戏中打开，请刷新/重新进入页面（代理启动前的连接不经过拦截）</span>"
         )
         tutorial.setWordWrap(True)
         tutorial.setStyleSheet("color:#444; background:#f6f6f6; border-radius:6px; padding:8px; margin-bottom:6px;")
