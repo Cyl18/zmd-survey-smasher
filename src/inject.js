@@ -372,12 +372,22 @@
     if (el.getAttribute('aria-selected') === 'true') return true;
     if (el.getAttribute('aria-pressed') === 'true') return true;
     if (el.getAttribute('aria-checked') === 'true') return true;
-    // Detect state-indicator descendants like <div>Selected</div> whose text
-    // leaks from a CSS class name (e.g. "3Selected Border" yields child text "Selected").
+    // Detect framework selection state via descendant className or leaf text.
+    // Handles cases like <div class="selected-border"> or <div>Selected Border</div>
+    // where the CSS class name leaks into textContent (e.g. "1Selected Border").
     var allEls = el.querySelectorAll('*');
     for (var i = 0; i < allEls.length; i++) {
-      var t = allEls[i].textContent.trim().toLowerCase();
-      if (t === 'selected' || t === 'checked') return true;
+      var child = allEls[i];
+      // className check — "selected"/"checked" but NOT "unselected"/"unchecked"
+      var cls = (typeof child.className === 'string' ? child.className : '').toLowerCase();
+      if (cls && cls.indexOf('selected') !== -1 && cls.indexOf('unselected') === -1) return true;
+      if (cls && cls.indexOf('checked') !== -1 && cls.indexOf('unchecked') === -1) return true;
+      // Leaf text check — only on elements with no child elements (text nodes only)
+      if (!child.children.length) {
+        var t = child.textContent.trim().toLowerCase();
+        if (t && t.length < 25 && t.indexOf('selected') !== -1 && t.indexOf('unselected') === -1) return true;
+        if (t && t.length < 25 && t.indexOf('checked') !== -1 && t.indexOf('unchecked') === -1) return true;
+      }
     }
     return false;
   }
@@ -417,25 +427,40 @@
     setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 50);
   }
 
-  function clickOptionGroups() {
+  // Stagger option-group clicks 150 ms apart so the framework (React/Vue)
+  // has time to update state after each click before the next fires.
+  // Calls onDone() after the advance button click + a settle delay.
+  function clickOptionGroups(onDone) {
     var groups = getOptionGroups();
     L('action: option_groups, ' + groups.length + ' groups');
-    groups.forEach(function (els) {
+
+    function doGroup(i) {
+      if (i >= groups.length) {
+        // All groups handled — wait for framework to settle, then click advance
+        setTimeout(function () {
+          var b = findAdvanceButton();
+          if (b) b.click();
+          setTimeout(onDone, 300);
+        }, 200);
+        return;
+      }
+      var els = groups[i];
       // Skip this group if any option is already selected — re-clicking would
       // toggle it off (deselect), causing "您尚未答完此题" endlessly.
       var selIdx = -1;
-      for (var i = 0; i < els.length; i++) {
-        if (isOptionSelected(els[i])) { selIdx = i; break; }
+      for (var j = 0; j < els.length; j++) {
+        if (isOptionSelected(els[j])) { selIdx = j; break; }
       }
       if (selIdx !== -1) {
-        L('  skip [already selected ' + selIdx + '/' + els.length + ']: ' + els[selIdx].textContent.trim().slice(0, 30));
-        return;
+        L('  skip [' + selIdx + '/' + els.length + ']: ' + els[selIdx].textContent.trim().slice(0, 30));
+      } else {
+        var idx = Math.max(0, els.length - 2);
+        L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
+        clickEl(els[idx]);
       }
-      var idx = Math.max(0, els.length - 2);
-      L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
-      clickEl(els[idx]);
-    });
-    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 50);
+      setTimeout(function () { doGroup(i + 1); }, 150);
+    }
+    doGroup(0);
   }
 
   function clickCheckboxGroups() {
@@ -570,21 +595,27 @@
       L('\u2192 ' + pageType);
 
       if (pageType === 'agreement') clickAgreement();
-      else if (pageType === 'option_groups') clickOptionGroups();
       else if (pageType === 'checkbox_groups') clickCheckboxGroups();
+      else if (pageType === 'option_groups') {
+        // clickOptionGroups is async (staggered); it calls afterAction when done.
+        clickOptionGroups(afterAction);
+        return; // skip the synchronous afterAction schedule below
+      }
     } catch (e) {
       L('ERROR: ' + e);
     }
 
-    // Check for unanswered error after a short delay
-    setTimeout(function () {
+    // Check for unanswered error after a short delay (agreement / checkbox_groups)
+    setTimeout(afterAction, 100);
+
+    function afterAction() {
       if (hasUnansweredError()) {
         handleFallback(0, 10, function () { processing = false; processPage(); });
       } else {
         processing = false;
         processPage();
       }
-    }, 100);
+    }
   }
 
   function onMutation(mutations) {
