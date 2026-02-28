@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from cache_cleaner import clear_game_cache
 from cert_installer import install_ca_cert
 from proxy_manager import ProxyManager, clear_system_proxy, set_system_proxy
 
@@ -108,9 +109,13 @@ class MainWindow(QMainWindow):
         self._stop_btn.setEnabled(False)
         self._cert_btn = QPushButton("安装 CA 证书")
         self._cert_btn.clicked.connect(self._on_install_cert)
+        self._cache_btn = QPushButton("清除游戏缓存")
+        self._cache_btn.setToolTip("清除 %LOCALAPPDATA%\\PlatformProcess 下的浏览器缓存")
+        self._cache_btn.clicked.connect(self._on_clear_cache)
         btn_row.addWidget(self._start_btn)
         btn_row.addWidget(self._stop_btn)
         btn_row.addWidget(self._cert_btn)
+        btn_row.addWidget(self._cache_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -213,6 +218,11 @@ class MainWindow(QMainWindow):
 
     def _on_cert_done(self, success: bool, message: str) -> None:
         self._cert_btn.setEnabled(True)
+        self._append_log(("✓ " if success else "✗ ") + message)
+
+    def _on_clear_cache(self) -> None:
+        self._append_log("正在清除游戏缓存…")
+        success, message = clear_game_cache()
         self._append_log(("✓ " if success else "✗ ") + message)
 
     def _append_log(self, text: str) -> None:

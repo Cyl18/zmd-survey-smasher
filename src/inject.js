@@ -95,37 +95,46 @@
 
   // ─── Utilities ────────────────────────────────────────────────────────────
 
+  // Check if a DOM node belongs to our injected UI (log panel / badge).
+  function isOwnUI(node) {
+    var el = node.nodeType === 1 ? node : node.parentElement;
+    while (el) {
+      if (el.id === 'zmd-log' || el.id === 'zmd-badge') return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
+
   function findAdvanceButton() {
     return Array.from(document.querySelectorAll('button'))
       .find(function (b) { return ADVANCE_TEXTS.indexOf(b.textContent.trim()) !== -1; });
   }
 
   function detectAgreement() {
-    // Only match the actual agreement page: an unchecked checkbox whose
-    // label (or nearest container) contains the exact agreement text.
-    var cb = document.querySelector('input[type="checkbox"]');
-    if (!cb) return false;
-    if (cb.checked) return false;  // already accepted → not agreement page
-    var label = cb.closest('label');
-    if (label && label.textContent.indexOf('我已阅读，并同意以上内容') !== -1) return true;
-    // Slightly broader: check the checkbox's parent chain (up to 3 levels)
-    var el = cb.parentElement;
-    for (var i = 0; i < 3 && el; i++) {
-      if (el.textContent && el.textContent.indexOf('我已阅读，并同意以上内容') !== -1) return true;
-      el = el.parentElement;
+    var cbs = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+    for (var i = 0; i < cbs.length; i++) {
+      var cb = cbs[i];
+      if (cb.checked) continue;
+      var label = cb.closest('label');
+      if (label && label.textContent.indexOf('我已阅读，并同意以上内容') !== -1) return true;
+      var el = cb.parentElement;
+      for (var j = 0; j < 5 && el; j++) {
+        if (el.textContent && el.textContent.indexOf('我已阅读，并同意以上内容') !== -1) return true;
+        el = el.parentElement;
+      }
     }
     return false;
   }
 
   // ─── Option-group detection ──────────────────────────────────────────────
-  // Two-phase detection:
-  //   Phase 1 — button groups: group <button> elements by parentElement,
-  //             keep groups with ≥2 buttons (leaf filter works because
-  //             buttons never nest inside other buttons).
-  //   Phase 2 — div option containers (only if no button groups found):
-  //             find a container div whose direct children are all divs
-  //             with a consistent sub-structure (≥2 child divs each).
-  //             This matches the icon+text pattern and rating grids.
+  // Multi-phase detection:
+  //   Phase 1 — button groups: group <button> by parentElement, keep ≥2.
+  //   Phase 2 — div option containers (strict): container div with 3–10
+  //             child divs each having ≥2 children (icon+text pattern).
+  //   Phase 3 — div option containers (relaxed): container div with 3+
+  //             child divs that have text content (deeply nested leaves).
+  //   Phase 4 — checkbox groups: non-agreement checkboxes grouped by
+  //             nearest shared ancestor.
 
   function getButtonGroups() {
     var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
@@ -147,31 +156,83 @@
   }
 
   function getDivOptionContainers() {
-    // A container is a div with 3–10 direct child divs, where each child
-    // has ≥2 child divs itself (icon+text, or similar repeated structure).
     var allDivs = Array.from(document.querySelectorAll('div'));
     var containers = [];
     for (var i = 0; i < allDivs.length; i++) {
       var el = allDivs[i];
+      if (isOwnUI(el)) continue;
       var kids = Array.from(el.children);
-      if (kids.length < 3 || kids.length > 10) continue;
-      var allDivKids = kids.every(function (k) {
+      if (kids.length < 3 || kids.length > 30) continue;
+
+      // Strict check: all children are divs with ≥2 children (icon+text)
+      var allStructured = kids.length <= 10 && kids.every(function (k) {
         return k.tagName === 'DIV' && k.children.length >= 2;
       });
-      if (allDivKids) containers.push(kids);
+      if (allStructured) { containers.push(kids); continue; }
+
+      // Relaxed check: most children are divs with text, no buttons/inputs.
+      // Filters out the button container and empty divs.
+      var optionDivs = kids.filter(function (k) {
+        if (k.tagName !== 'DIV') return false;
+        if (isOwnUI(k)) return false;
+        if (k.querySelector('button')) return false;
+        if (k.querySelector('input')) return false;
+        var text = k.textContent.trim();
+        return text.length > 0 && text.length < 500;
+      });
+      // Need at least 3 option-like divs and they should be the majority
+      if (optionDivs.length >= 3 && optionDivs.length >= kids.length * 0.5) {
+        containers.push(optionDivs);
+      }
     }
     return containers;
+  }
+
+  // Find non-agreement checkboxes, grouped by nearest shared container.
+  function getCheckboxGroups() {
+    var agreementText = '我已阅读，并同意以上内容';
+    var allCbs = Array.from(document.querySelectorAll('input[type="checkbox"]')).filter(function (cb) {
+      // Walk up to check if this is the agreement checkbox
+      var el = cb;
+      for (var i = 0; i < 6 && el; i++) {
+        if (el.textContent && el.textContent.indexOf(agreementText) !== -1) return false;
+        el = el.parentElement;
+      }
+      return true;
+    });
+    if (allCbs.length < 2) return [];
+
+    // Group by nearest ancestor that contains ≥2 checkboxes
+    var map = new Map();
+    allCbs.forEach(function (cb) {
+      var container = cb.parentElement;
+      for (var i = 0; i < 8 && container && container !== document.body; i++) {
+        if (container.querySelectorAll('input[type="checkbox"]').length >= 2) break;
+        container = container.parentElement;
+      }
+      if (!container) container = document.body;
+      if (!map.has(container)) map.set(container, []);
+      map.get(container).push(cb);
+    });
+    var groups = [];
+    map.forEach(function (cbs) {
+      if (cbs.length >= 2) groups.push(cbs);
+    });
+    return groups;
   }
 
   function getOptionGroups() {
     var btnGroups = getButtonGroups();
     if (btnGroups.length > 0) return btnGroups;
-    return getDivOptionContainers();
+    var divGroups = getDivOptionContainers();
+    if (divGroups.length > 0) return divGroups;
+    return [];
   }
 
   function detectPageType() {
     if (detectAgreement()) return 'agreement';
     if (getOptionGroups().length > 0) return 'option_groups';
+    if (getCheckboxGroups().length > 0) return 'checkbox_groups';
     return null;
   }
 
@@ -202,10 +263,32 @@
     setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
   }
 
+  function clickCheckboxGroups() {
+    var groups = getCheckboxGroups();
+    L('action: checkbox_groups, ' + groups.length + ' groups');
+    groups.forEach(function (cbs) {
+      // Check 1–3 random checkboxes per group
+      var n = 1 + Math.floor(Math.random() * Math.min(3, cbs.length));
+      var shuffled = cbs.slice().sort(function () { return Math.random() - 0.5; });
+      shuffled.slice(0, n).forEach(function (cb) {
+        L('  check: ' + (cb.closest('label') || cb.parentElement || cb).textContent.trim().slice(0, 40));
+        var label = cb.closest('label');
+        if (label) label.click();
+        else cb.click();
+        try { cb.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      });
+    });
+    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
+  }
+
   // ─── Fallback (pure setTimeout, no async) ──────────────────────────────
 
   function hasUnansweredError() {
-    return document.body.textContent.indexOf('您尚未答完此题') !== -1;
+    // Exclude our own log panel from the check
+    var body = document.body.cloneNode(true);
+    var log = body.querySelector('#zmd-log');
+    if (log) log.remove();
+    return (body.textContent || '').indexOf('您尚未答完此题') !== -1;
   }
 
   function handleFallback(attempt, maxRetries, done) {
@@ -213,23 +296,40 @@
     maxRetries = maxRetries || 10;
     if (attempt >= maxRetries) { lastKey = ''; L('fallback exhausted'); done(); return; }
     L('fallback ' + (attempt + 1) + '/' + maxRetries);
+
+    // Try all interactive element types
     var groups = getOptionGroups();
+    var cbGroups = getCheckboxGroups();
+
     if (groups.length > 0) {
       groups.forEach(function (els) {
         var n = 1 + Math.floor(Math.random() * Math.min(3, els.length));
         els.slice().sort(function () { return Math.random() - 0.5; }).slice(0, n)
           .forEach(function (e) { e.click(); });
       });
-    } else {
+    }
+    if (cbGroups.length > 0) {
+      cbGroups.forEach(function (cbs) {
+        var n = 1 + Math.floor(Math.random() * Math.min(3, cbs.length));
+        cbs.slice().sort(function () { return Math.random() - 0.5; }).slice(0, n)
+          .forEach(function (cb) {
+            var label = cb.closest('label');
+            if (label) label.click(); else cb.click();
+            try { cb.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+          });
+      });
+    }
+    if (groups.length === 0 && cbGroups.length === 0) {
+      // Last resort: click random non-navigation buttons
       var btns = Array.from(document.querySelectorAll('button')).filter(function (b) {
         return SKIP_BUTTON_TEXTS.indexOf(b.textContent.trim()) === -1;
       });
       btns.slice().sort(function () { return Math.random() - 0.5; }).slice(0, 3)
         .forEach(function (b) { b.click(); });
     }
+
     setTimeout(function () {
-      var adv = Array.from(document.querySelectorAll('button'))
-        .find(function (b) { return b.textContent.trim() === '下一页'; });
+      var adv = findAdvanceButton();
       if (adv) adv.click();
       setTimeout(function () {
         if (!hasUnansweredError()) { done(); return; }
@@ -244,8 +344,19 @@
   var debounceTimer = null;
   var processing = false;
 
+  // Compute a page fingerprint that excludes our injected UI elements,
+  // so logging to the panel doesn't trigger re-processing.
   function pageKey() {
-    return location.href + '|' + document.body.children.length + '|' + (document.body.innerText || '').length;
+    var children = document.body.children;
+    var count = 0;
+    var textLen = 0;
+    for (var i = 0; i < children.length; i++) {
+      var ch = children[i];
+      if (ch.id === 'zmd-log' || ch.id === 'zmd-badge') continue;
+      count++;
+      textLen += (ch.innerText || '').length;
+    }
+    return location.href + '|' + count + '|' + textLen;
   }
 
   function processPage() {
@@ -260,14 +371,28 @@
       var nCb = document.querySelectorAll('input[type="checkbox"]').length;
       var nBg = getButtonGroups().length;
       var nDg = getDivOptionContainers().length;
-      L('page: ' + nBtn + ' btns, ' + nCb + ' cb, ' + nBg + ' btnGrp, ' + nDg + ' divGrp');
+      var nCg = getCheckboxGroups().length;
+      L('page: ' + nBtn + ' btns, ' + nCb + ' cb, ' + nBg + ' btnGrp, ' + nDg + ' divGrp, ' + nCg + ' cbGrp');
 
       var pageType = detectPageType();
-      if (!pageType) { L('⚠ unknown page type'); processing = false; scheduleRecheck(); return; }
-      L('→ ' + pageType);
+      if (!pageType) {
+        // Unknown page — try fallback if there are any interactive elements
+        var hasInteractive = nBtn > 0 || nCb > 0;
+        if (hasInteractive) {
+          L('\u26a0 unknown page type \u2014 trying fallback');
+          handleFallback(0, 10, function () { processing = false; });
+        } else {
+          L('\u26a0 unknown page type (no interactive elements)');
+          processing = false;
+          // Don't schedule recheck — wait for MutationObserver
+        }
+        return;
+      }
+      L('\u2192 ' + pageType);
 
       if (pageType === 'agreement') clickAgreement();
       else if (pageType === 'option_groups') clickOptionGroups();
+      else if (pageType === 'checkbox_groups') clickCheckboxGroups();
     } catch (e) {
       L('ERROR: ' + e);
     }
@@ -275,21 +400,23 @@
     // Check for unanswered error after a short delay
     setTimeout(function () {
       if (hasUnansweredError()) {
-        handleFallback(0, 10, function () { processing = false; scheduleRecheck(); });
+        handleFallback(0, 10, function () { processing = false; });
       } else {
         processing = false;
-        scheduleRecheck();
       }
     }, 300);
   }
 
-  function scheduleRecheck() {
-    setTimeout(function () { processPage(); }, 300);
-  }
+  function onMutation(mutations) {
+    // Ignore mutations caused by our own UI (log panel, badge)
+    var dominated = true;
+    for (var i = 0; i < mutations.length; i++) {
+      if (!isOwnUI(mutations[i].target)) { dominated = false; break; }
+    }
+    if (dominated) return;
 
-  function onMutation() {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(function () { processPage(); }, 10);
+    debounceTimer = setTimeout(function () { processPage(); }, 100);
   }
 
   // ─── Dialog dismissal ─────────────────────────────────────────────────────
@@ -302,7 +429,7 @@
     if (cancel) { cancel.click(); dialogDismissed = true; lastKey = ''; L('dismissed dialog (取消)'); return true; }
     var next = allBtns.find(function (b) { return b.textContent.trim().indexOf('下一页') !== -1; });
     if (next) { next.click(); dialogDismissed = true; lastKey = ''; L('dismissed dialog (下一页)'); return true; }
-    L('⚠ dialog detected but no button found');
+    L('\u26a0 dialog detected but no button found');
     return false;
   }
 
