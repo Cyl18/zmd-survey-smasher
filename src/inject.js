@@ -324,7 +324,7 @@
       } catch (e) { L('agreement click failed: ' + e); }
       try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
     }
-    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
+    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 50);
   }
 
   function clickOptionGroups() {
@@ -335,7 +335,7 @@
       L('  click [' + idx + '/' + els.length + ']: ' + els[idx].textContent.trim().slice(0, 30));
       clickEl(els[idx]);
     });
-    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
+    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 50);
   }
 
   function clickCheckboxGroups() {
@@ -353,7 +353,7 @@
         try { cb.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
       });
     });
-    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 100);
+    setTimeout(function () { var b = findAdvanceButton(); if (b) b.click(); }, 50);
   }
 
   // ─── Fallback (pure setTimeout, no async) ──────────────────────────────
@@ -409,8 +409,8 @@
       setTimeout(function () {
         if (!hasUnansweredError()) { done(); return; }
         handleFallback(attempt + 1, maxRetries, done);
-      }, 500);
-    }, 200);
+      }, 200);
+    }, 100);
   }
 
   // ─── Navigation guard (pure setTimeout, no async) ─────────────────────
@@ -481,7 +481,7 @@
       } else {
         processing = false;
       }
-    }, 300);
+    }, 100);
   }
 
   function onMutation(mutations) {

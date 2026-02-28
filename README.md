@@ -130,3 +130,85 @@ zmd-survey-smasher/
     ├── cert_installer.py    # certutil CA 证书安装
     └── inject.js            # 注入到问卷页面的客户端脚本
 ```
+
+问题：
+1. 需要清理缓存，否则游戏会缓存：
+C:\Users\cyl18\AppData\Local\PlatformProcess\*
+
+2.无法识别div组
+[zmd] → agreement
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] action: agreement
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 1/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 2/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 3/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 4/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 5/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 6/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 7/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 8/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 9/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback 10/10
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] fallback exhausted
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] page: 1 btns, 19 cb, 0 btnGrp, 0 divGrp
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] ⚠ unknown page type
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] page: 1 btns, 19 cb, 0 btnGrp, 0 divGrp
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] ⚠ unknown page type
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] page: 1 btns, 19 cb, 0 btnGrp, 0 divGrp
+ce016ae9476b3fd57ac7042e41976f3f:72 [zmd] ⚠ unknown page type
+
+会无限刷log卡cpu尝试，根本没有走fallback路径（随机乱点）
+这个的结构是
+div (root)
+├─ div
+│  └─ div
+│     └─ div
+│        └─ div [leaf]
+├─ div
+│  └─ div
+│     ├─ ...（大量类似深层嵌套的分支，每个终点都是 div [leaf]）...
+│     └─ div
+│        └─ div
+│           └─ div [leaf] 终点有文字 类似<div>abcd</div>
+├─ div
+│  └─ button 下一步
+│     └─ div
+│        ├─ div [button-inner-1]
+│        └─ div [button-inner-2]
+├─ div
+└─ div
+最好可以改的robust fault tolerant一点
+
+
+
+
+
+根 div
+├── div①  (空)
+├── div②  (主内容区)
+│   ├── div (头部区域)
+│   │   └── div > div (标题)
+│   └── div (问卷体)
+│       ├── div (题目列表)
+│       │   ├── div (进度指示器 - 5个小圆点)
+│       │   ├── **题组1**
+│       │   └── **题组2**
+│       └── div (空)
+├── div③  (提交按钮区)
+│   └── **button** ← 提交按钮
+├── div④  (空)
+└── div⑤  (空)
+
+题组 div
+└── div
+    ├── div (题目文字)
+    └── div
+        └── div (选项容器) ← 7个子元素
+            ├── button  (选项1)  ✅ 可点 -> 内部还有div
+            ├── button  (选项2)  ✅ 可点
+            ├── button  (选项3)  ✅ 可点
+            ├── button  (选项4)  ✅ 可点
+            ├── button  (选项5)  ✅ 可点
+            ├── div     (分隔/装饰) ❌ 跳过
+            └── button  (选项6 - "其他"选项，有输入框) ✅ 可点
+
+这种结构目前无法识别 最好可以改的robust fault tolerant一点 通用一点
