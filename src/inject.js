@@ -471,7 +471,7 @@
             L('  advance: clicking' + (unconfirmed.length ? ' (⚠ unconfirmed: [' + unconfirmed.join(',') + '])' : ''));
             b.click();
           }
-          setTimeout(onDone, 300);
+          setTimeout(onDone, 800);
         }, 200);
         return;
       }
@@ -569,8 +569,8 @@
       setTimeout(function () {
         if (!hasUnansweredError()) { done(); return; }
         handleFallback(attempt + 1, maxRetries, done);
-      }, 200);
-    }, 100);
+      }, 100);
+    }, 50);
   }
 
   // ─── Navigation guard (pure setTimeout, no async) ─────────────────────
@@ -661,7 +661,7 @@
     if (dominated) return;
 
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(function () { processPage(); }, 100);
+    debounceTimer = setTimeout(function () { processPage(); }, 400);
   }
 
   // ─── Dialog dismissal ─────────────────────────────────────────────────────
