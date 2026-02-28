@@ -689,6 +689,7 @@
     if (key === lastKey) return;
     lastKey = key;
     processing = true;
+    var startKey = key;  // captured for afterAction page-change detection
 
     try {
       var nBtn = document.querySelectorAll('button').length;
@@ -736,6 +737,13 @@
     setTimeout(afterAction, 100);
 
     function afterAction() {
+      // If the page already changed since we started, the advance worked —
+      // skip fallback and let processPage handle the new page.
+      if (pageKey() !== startKey) {
+        processing = false;
+        processPage();
+        return;
+      }
       if (hasUnansweredError()) {
         handleFallback(0, 10, function () { processing = false; processPage(); });
       } else {
