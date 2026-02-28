@@ -482,11 +482,15 @@
         var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked');
         if (setter && setter.set) setter.set.call(input, true);
       } catch (e) {}
-      var label = input.closest('label');
-      try {
-        if (label) label.click();
-        else input.click();
-      } catch (e) { L('agreement click failed: ' + e); }
+      // Only click if still unchecked — label.click() toggles, so calling it on an
+      // already-checked input would uncheck it.
+      if (!input.checked) {
+        var label = input.closest('label');
+        try {
+          if (label) label.click();
+          else input.click();
+        } catch (e) { L('agreement click failed: ' + e); }
+      }
       try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
       try { input.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
     }
