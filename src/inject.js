@@ -138,8 +138,12 @@
 
   function getButtonGroups() {
     var allBtns = Array.from(document.querySelectorAll('button')).filter(function (b) {
+      if (isOwnUI(b)) return false;
       var text = b.textContent.trim();
-      return text && SKIP_BUTTON_TEXTS.indexOf(text) === -1;
+      // Only exclude buttons whose text is explicitly a navigation label.
+      // Buttons with no text (icon/image buttons) are kept.
+      if (text && SKIP_BUTTON_TEXTS.indexOf(text) !== -1) return false;
+      return true;
     });
     var map = new Map();
     allBtns.forEach(function (b) {
@@ -162,15 +166,47 @@
       var el = allDivs[i];
       if (isOwnUI(el)) continue;
       var kids = Array.from(el.children);
-      if (kids.length < 3 || kids.length > 30) continue;
+      if (kids.length < 2 || kids.length > 30) continue;
 
-      // Strict check: all children are divs with ≥2 children (icon+text)
+      // Phase 0 — mixed direct-button containers: mostly button children with
+      // optional decorator divs/spans.
+      // Handles: container > [button * N, div (separator), button (其他)]
+      var directBtns = kids.filter(function (k) {
+        if (k.tagName !== 'BUTTON') return false;
+        var text = k.textContent.trim();
+        return !text || SKIP_BUTTON_TEXTS.indexOf(text) === -1;
+      });
+      if (directBtns.length >= 2 && directBtns.length >= kids.length * 0.4) {
+        containers.push(directBtns);
+        continue;
+      }
+
+      // Phase 1 — wrapped-button containers: each child div/li wraps exactly
+      // one option button.  Handles: container > [div > button] * N
+      var wrappedBtns = [];
+      for (var j = 0; j < kids.length; j++) {
+        var wk = kids[j];
+        if (wk.tagName !== 'DIV' && wk.tagName !== 'LI' && wk.tagName !== 'SPAN') continue;
+        var innerBtns = wk.querySelectorAll('button');
+        if (innerBtns.length !== 1) continue;
+        var btext = innerBtns[0].textContent.trim();
+        if (btext && SKIP_BUTTON_TEXTS.indexOf(btext) !== -1) continue;
+        wrappedBtns.push(innerBtns[0]);
+      }
+      if (wrappedBtns.length >= 2 && wrappedBtns.length >= kids.length * 0.4) {
+        containers.push(wrappedBtns);
+        continue;
+      }
+
+      if (kids.length < 3) continue;  // remaining phases need ≥3 children
+
+      // Phase 2 — strict: all children are divs with ≥2 children (icon+text)
       var allStructured = kids.length <= 10 && kids.every(function (k) {
         return k.tagName === 'DIV' && k.children.length >= 2;
       });
       if (allStructured) { containers.push(kids); continue; }
 
-      // Relaxed check: most children are divs with text, no buttons/text-inputs.
+      // Phase 3 — relaxed: most children are divs with text, no buttons/text-inputs.
       // Allows radio/checkbox inputs (they are the option selectors).
       // Filters out the button container and empty divs.
       var optionDivs = kids.filter(function (k) {
